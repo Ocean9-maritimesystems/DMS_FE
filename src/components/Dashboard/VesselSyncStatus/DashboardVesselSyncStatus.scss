@@ -438,3 +438,140 @@
 
     .vs-setup-error { color: #dc2626; font-size: 0.85rem; }
 }
+
+/* ---------- Details dialog: summary header and compact tables ---------- */
+.vs-dialog {
+    .p-dialog-header { padding: 10px 16px; }
+    .p-dialog-header-icons { align-self: flex-start; }
+    .p-dialog-content { padding: 0 16px 10px; }
+
+    .vs-dialog-head {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px 28px;
+        width: 100%;
+    }
+
+    .vs-dialog-title {
+        > div { display: flex; flex-direction: column; line-height: 1.2; }
+        .vs-muted { font-size: 0.8rem; }
+    }
+
+    .vs-dialog-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+        background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+
+        i { color: var(--primary-color); font-size: 1rem; }
+    }
+
+    .vs-dialog-name { font-size: 1.05rem; font-weight: 650; }
+
+    .vs-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 18px;
+        font-size: 0.85rem;
+        font-weight: 400;
+        color: var(--text-secondary);
+
+        strong { margin-right: 3px; font-size: 0.95rem; color: var(--text-primary); }
+        .is-ok strong { color: #15803d; }
+        .is-warn strong { color: #b45309; }
+        .is-bad strong { color: #b91c1c; }
+    }
+
+    .vs-tabs .p-tabview-panels { padding-top: 8px; }
+    .vs-tabs .p-tabview-panel { gap: 8px; }
+
+    .vs-toolbar {
+        gap: 8px;
+
+        .vs-type-filter .p-button { height: 32px; padding: 0 12px; font-size: 0.82rem; }
+    }
+
+    .vs-search { flex: 0 1 300px; }
+    .vs-search .p-inputtext { height: 32px; font-size: 0.85rem; }
+
+    .vs-history-facts {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px 16px;
+        margin-left: auto;
+        font-size: 0.82rem;
+        color: var(--text-secondary);
+
+        strong { color: var(--text-primary); font-weight: 600; }
+    }
+
+    .vs-retry.p-button { margin-top: 10px; height: 32px; gap: 6px; }
+
+    /* Compact rows, header kept on top while scrolling */
+    .vs-table.p-datatable {
+        font-size: 0.85rem;
+
+        .p-datatable-thead > tr > th {
+            padding: 7px 10px;
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .p-datatable-tbody > tr > td {
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+
+        .p-sortable-column-icon { width: 0.7rem; height: 0.7rem; margin-left: 4px; }
+        .p-sortable-column.p-highlight { background: color-mix(in srgb, var(--primary-color) 8%, var(--bg-secondary)); }
+
+        .p-paginator {
+            padding: 4px 6px;
+            border-top: 1px solid var(--border-color);
+            font-size: 0.82rem;
+
+            .p-paginator-current { padding: 0 8px; }
+            .p-paginator-first, .p-paginator-prev, .p-paginator-next, .p-paginator-last { min-width: 30px; height: 30px; }
+            .p-dropdown { height: 30px; margin-left: 8px; align-items: center; }
+            .p-dropdown-label { padding: 4px 8px; font-size: 0.82rem; }
+        }
+    }
+
+    .vs-title { gap: 0; }
+    .vs-title-main { font-weight: 600; line-height: 1.3; }
+    .vs-title-sub { font-size: 0.75rem; line-height: 1.3; }
+    .vs-type { font-size: 0.82rem; }
+    .vs-pill { padding: 1px 8px; font-size: 0.72rem; }
+
+    .vs-ack {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.8rem;
+        white-space: nowrap;
+    }
+
+    .vs-ack-bar {
+        width: 56px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--border-color);
+        overflow: hidden;
+
+        > span { display: block; height: 100%; background: #16a34a; border-radius: 999px; }
+    }
+
+    .vs-setup { padding: 10px 12px; }
+}

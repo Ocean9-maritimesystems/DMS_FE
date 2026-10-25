@@ -1,5 +1,14 @@
 # Changes – DMS_FE
 
+## 25 Oct 2026 – certificates removed, folder table renamed
+
+* Certificates are gone from the office and the vessel apps: the "Certificate expiry" report is removed (Reports and
+  Dashboard > Other Documents > All vessels), and search shows every Other Document as a document. The older notes
+  below that mention a Certificates page or `/certificates` links no longer apply.
+* Folders of Other Documents are `OtherDocument_Folder` / `OtherDocument_FolderID` everywhere (was `FLD_Folder` /
+  `FLD_FolderID`): run `Database/022_RenameFolderTable.sql`, `023_RemoveCertificates.sql` and `020_ApiProcedures.sql`
+  again on the office database, and update the ships to the matching vessel build.
+
 ## 20 Oct 2026 (evening) – merged with `feature/otherdocument`
 
 The folder was switched to the `feature/otherdocument` branch while the changes below were being saved, so part of

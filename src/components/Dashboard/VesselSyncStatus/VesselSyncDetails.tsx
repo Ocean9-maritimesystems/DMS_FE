@@ -48,6 +48,8 @@ interface VesselSyncHistory {
     keyCreatedUtc?: string | null;
     keyCreatedBy?: string | null;
     keyLastUsedUtc?: string | null;
+    /** Why the key could not be read (the history is still shown). */
+    keyError?: string | null;
     entries: VesselSyncLogEntry[];
 }
 
@@ -72,6 +74,16 @@ const typeIcon: Record<string, string> = {
     Circular: 'pi-inbox',
     Alert: 'pi-bell',
 };
+
+const HISTORY_FILTERS = [
+    { label: 'All', value: 'all' },
+    { label: 'OK', value: 'OK' },
+    { label: 'Failed', value: 'Failed' },
+];
+
+/** Compact pager: first / previous / "1–15 of 55" / next / last, and rows per page. */
+const PAGER = 'FirstPageLink PrevPageLink CurrentPageReport NextPageLink LastPageLink RowsPerPageDropdown';
+const PAGE_REPORT = '{first}–{last} of {totalRecords}';
 
 const statusClass = (status: string) => {
     switch (status) {
@@ -107,6 +119,7 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
     const [history, setHistory] = useState<VesselSyncHistory | null>(null);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyError, setHistoryError] = useState('');
+    const [historyFilter, setHistoryFilter] = useState('all');
 
     // Sync key and resync
     const [newKey, setNewKey] = useState('');
@@ -138,6 +151,7 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
         if (!visible) return;
         setTab(0);
         setTypeFilter('all');
+        setHistoryFilter('all');
         setSearch('');
         setNewKey('');
         setCopied(false);
@@ -149,11 +163,12 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
     }, [visible, loadItems, loadHistory]);
 
     const counts = useMemo(() => {
-        const c = { total: items.length, acknowledged: 0, pending: 0, queued: 0 };
+        const c = { total: items.length, acknowledged: 0, pending: 0, queued: 0, onBoard: 0 };
         items.forEach((i) => {
             if (i.status === 'Acknowledged') c.acknowledged += 1;
             else if (i.status === 'Pending' || i.status === 'Partly acknowledged') c.pending += 1;
             if (i.delivery === 'Queued') c.queued += 1;
+            else if (i.delivery) c.onBoard += 1;
         });
         return c;
     }, [items]);
@@ -166,6 +181,15 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
     }, [items, typeFilter, search]);
 
     const hasDelivery = items.some((i) => i.delivery);
+
+    const entries = useMemo(() => history?.entries ?? [], [history]);
+    const shownEntries = useMemo(
+        () => entries.filter((e) => historyFilter === 'all' || (historyFilter === 'OK' ? e.status === 'OK' : e.status !== 'OK')),
+        [entries, historyFilter],
+    );
+    const lastSync = entries[0];
+    const lastOk = entries.find((e) => e.status === 'OK');
+    const failedCount = entries.filter((e) => e.status !== 'OK').length;
 
     // ---- Sync key and resync ----
 
@@ -229,7 +253,12 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
     );
 
     const ackBody = (row: VesselSyncItem) => row.ranksRequired > 0
-        ? <span>{row.ranksAcknowledged} of {row.ranksRequired} ranks</span>
+        ? (
+            <span className="vs-ack" title={`${row.ranksAcknowledged} of ${row.ranksRequired} ranks have acknowledged`}>
+                <span className="vs-ack-bar"><span style={{ width: `${Math.min(100, (row.ranksAcknowledged / row.ranksRequired) * 100)}%` }} /></span>
+                <span>{row.ranksAcknowledged}/{row.ranksRequired}</span>
+            </span>
+        )
         : <span className="vs-muted">Not required</span>;
 
     const deliveryBody = (row: VesselSyncItem) => !row.delivery
@@ -314,7 +343,18 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
 
     const historyBody = () => {
         if (historyLoading && !history) return <div className="vs-empty"><i className="pi pi-spin pi-spinner" /> Loading…</div>;
-        if (historyError) return <div className="vs-empty error"><i className="pi pi-exclamation-triangle" /> {historyError}</div>;
+        if (historyError) {
+            return (
+                <div className="vs-empty error">
+                    <i className="pi pi-exclamation-triangle" />
+                    <div>
+                        <strong>The sync history could not be loaded.</strong>
+                        <p>{historyError}</p>
+                        <Button type="button" label="Try again" icon="pi pi-refresh" className="p-button-sm p-button-outlined vs-retry" onClick={loadHistory} />
+                    </div>
+                </div>
+            );
+        }
         if (history && !history.syncInstalled) {
             return (
                 <div className="vs-empty">
@@ -327,51 +367,77 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
                 </div>
             );
         }
-        const entries = history?.entries ?? [];
         return (
             <>
                 {setupBody()}
+                {history?.keyError && <span className="vs-setup-error"><i className="pi pi-exclamation-triangle" /> The sync key could not be read: {history.keyError}</span>}
+                <div className="vs-toolbar">
+                    <SelectButton value={historyFilter} options={HISTORY_FILTERS} onChange={(e) => e.value && setHistoryFilter(e.value)} className="vs-type-filter" />
+                    <span className="vs-history-facts">
+                        <span>Last sync <strong>{lastSync ? formatDateTime(lastSync.startedUtc) : 'never'}</strong></span>
+                        <span>Last success <strong>{lastOk ? formatDateTime(lastOk.startedUtc) : 'never'}</strong></span>
+                        {failedCount > 0 && <span className="vs-pill pending">{failedCount} failed</span>}
+                    </span>
+                    <Button type="button" icon="pi pi-refresh" className="p-button-text p-button-sm" aria-label="Refresh" title="Refresh" onClick={loadHistory} />
+                </div>
                 <DataTable
-                    value={entries}
+                    value={shownEntries}
                     dataKey="syncLogID"
                     size="small"
                     stripedRows
                     loading={historyLoading}
-                    paginator={entries.length > 10}
-                    rows={10}
+                    paginator={shownEntries.length > 15}
+                    rows={15}
+                    rowsPerPageOptions={[15, 30, 50]}
+                    paginatorTemplate={PAGER}
+                    currentPageReportTemplate={PAGE_REPORT}
                     scrollable
                     scrollHeight="flex"
-                    emptyMessage="No sync calls recorded for this vessel yet."
+                    className="vs-table"
+                    emptyMessage={entries.length ? 'No sync calls match.' : 'No sync calls recorded for this vessel yet.'}
                 >
-                    <Column header="Started" body={(r: VesselSyncLogEntry) => formatDateTime(r.startedUtc)} style={{ width: '22%' }} />
+                    <Column header="Started" body={(r: VesselSyncLogEntry) => formatDateTime(r.startedUtc)} style={{ width: 180 }} />
                     <Column header="Direction" body={(r: VesselSyncLogEntry) => (
                         <span className="vs-type">
                             <i className={`pi ${r.direction === 'Down' ? 'pi-arrow-down' : 'pi-arrow-up'}`} />
                             {r.direction === 'Down' ? 'Office to vessel' : 'Vessel to office'}
                         </span>
-                    )} style={{ width: '18%' }} />
-                    <Column header="Items" field="itemsCount" style={{ width: '9%' }} />
+                    )} style={{ width: 160 }} />
+                    <Column header="Items" field="itemsCount" style={{ width: 70 }} />
                     <Column header="Status" body={(r: VesselSyncLogEntry) => (
                         <span className={r.status === 'OK' ? 'vs-pill ok' : 'vs-pill pending'}>{r.status === 'OK' ? 'OK' : 'Failed'}</span>
-                    )} style={{ width: '11%' }} />
-                    <Column header="Took" body={(r: VesselSyncLogEntry) => duration(r.startedUtc, r.finishedUtc)} style={{ width: '10%' }} />
-                    <Column header="Error" body={(r: VesselSyncLogEntry) => <span className="vs-muted">{r.error}</span>} style={{ width: '30%' }} />
+                    )} style={{ width: 90 }} />
+                    <Column header="Took" body={(r: VesselSyncLogEntry) => duration(r.startedUtc, r.finishedUtc)} style={{ width: 80 }} />
+                    <Column header="Error" body={(r: VesselSyncLogEntry) => <span className="vs-muted">{r.error}</span>} />
                 </DataTable>
             </>
         );
     };
 
+    const header = (
+        <div className="vs-dialog-head">
+            <div className="vs-dialog-title">
+                <span className="vs-dialog-icon"><i className="pi pi-sync" /></span>
+                <div>
+                    <span className="vs-dialog-name">{vesselName}</span>
+                    <span className="vs-muted">Sync details</span>
+                </div>
+            </div>
+            <div className="vs-stats" aria-label="Summary">
+                <span><strong>{counts.total}</strong> sent</span>
+                {hasDelivery && <span><strong>{counts.onBoard}</strong> on board</span>}
+                {hasDelivery && <span className={counts.queued ? 'is-warn' : ''}><strong>{counts.queued}</strong> queued</span>}
+                <span className="is-ok"><strong>{counts.acknowledged}</strong> acknowledged</span>
+                <span className={counts.pending ? 'is-bad' : ''}><strong>{counts.pending}</strong> waiting</span>
+            </div>
+        </div>
+    );
+
     return (
         <Dialog
             visible={visible}
             onHide={onHide}
-            header={
-                <div className="vs-dialog-title">
-                    <i className="pi pi-sync" />
-                    <span>{vesselName}</span>
-                    <span className="vs-muted">sync details</span>
-                </div>
-            }
+            header={header}
             style={{ width: 'min(1100px, 96vw)', height: 'min(760px, 92vh)' }}
             className="vs-dialog"
             modal
@@ -390,11 +456,6 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
                             <i className="pi pi-search" />
                             <InputText value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search number or title" />
                         </span>
-                        <span className="vs-counts">
-                            {hasDelivery && <span className="vs-pill part">{counts.queued} queued</span>}
-                            <span className="vs-pill ok">{counts.acknowledged} acknowledged</span>
-                            <span className="vs-pill pending">{counts.pending} waiting</span>
-                        </span>
                     </div>
                     {itemsError ? (
                         <div className="vs-empty error"><i className="pi pi-exclamation-triangle" /> {itemsError}</div>
@@ -405,20 +466,24 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
                             loading={itemsLoading}
                             size="small"
                             stripedRows
-                            paginator={visibleItems.length > 10}
-                            rows={10}
+                            paginator={visibleItems.length > 15}
+                            rows={15}
+                            rowsPerPageOptions={[15, 30, 50]}
+                            paginatorTemplate={PAGER}
+                            currentPageReportTemplate={PAGE_REPORT}
                             scrollable
                             scrollHeight="flex"
+                            className="vs-table"
                             sortField="issuedOn"
                             sortOrder={-1}
                             emptyMessage={itemsLoading ? 'Loading…' : 'Nothing has been sent to this vessel.'}
                         >
-                            <Column header="Type" body={typeBody} field="itemType" sortable style={{ width: '14%' }} />
-                            <Column header="Title" body={titleBody} field="title" sortable style={{ width: hasDelivery ? '34%' : '40%' }} />
-                            <Column header="Issued" field="issuedOn" sortable body={(r: VesselSyncItem) => formatDate(r.issuedOn ?? '', '')} style={{ width: '12%' }} />
-                            {hasDelivery && <Column header="On vessel" field="delivery" sortable body={deliveryBody} style={{ width: '11%' }} />}
-                            <Column header="Acknowledged" body={ackBody} style={{ width: '13%' }} />
-                            <Column header="Status" field="status" sortable body={(r: VesselSyncItem) => <span className={statusClass(r.status)}>{r.status}</span>} style={{ width: '16%' }} />
+                            <Column header="Type" body={typeBody} field="itemType" sortable style={{ width: 110 }} />
+                            <Column header="Title" body={titleBody} field="title" sortable />
+                            <Column header="Issued" field="issuedOn" sortable body={(r: VesselSyncItem) => formatDate(r.issuedOn ?? '', '')} style={{ width: 115 }} />
+                            {hasDelivery && <Column header="On vessel" field="delivery" sortable body={deliveryBody} style={{ width: 105 }} />}
+                            <Column header="Acknowledged" body={ackBody} style={{ width: 140 }} />
+                            <Column header="Status" field="status" sortable body={(r: VesselSyncItem) => <span className={statusClass(r.status)}>{r.status}</span>} style={{ width: 160 }} />
                         </DataTable>
                     )}
                 </TabPanel>

@@ -167,34 +167,10 @@ export const REPORTS: ReportDefinition[] = [
         ],
     },
 
-    // ------------------------------------------------------------------ Certificates & documents
-    {
-        key: 'certificate-expiry',
-        group: 'Certificates & documents',
-        title: 'Certificate expiry',
-        description: 'Current certificates per vessel with days left: expired, expiring (within the type\'s warning days), valid.',
-        icon: 'pi pi-verified',
-        filters: ['vessel', 'status', 'days'],
-        statuses: opts('Expired', 'Expiring', 'Valid', 'No expiry'),
-        daysLabel: 'Expiring within (days)',
-        landscape: true,
-        columns: [
-            { field: 'vessel', header: 'Vessel', weight: 1.2 },
-            { field: 'type', header: 'Certificate type', weight: 1.4 },
-            { field: 'certificateNo', header: 'Certificate no.' },
-            { field: 'documentNo', header: 'Document no.' },
-            { field: 'title', header: 'Title', weight: 1.8 },
-            { field: 'issuedBy', header: 'Issued by', weight: 1.2 },
-            { field: 'issueDate', header: 'Issued', type: 'date' },
-            { field: 'expiryDate', header: 'Expires', type: 'date' },
-            { field: 'nextSurvey', header: 'Next survey', type: 'date' },
-            { field: 'daysLeft', header: 'Days left', type: 'number', weight: 0.6 },
-            { field: 'status', header: 'Status', type: 'tag', weight: 0.8 },
-        ],
-    },
+    // ------------------------------------------------------------------ Documents
     {
         key: 'document-register',
-        group: 'Certificates & documents',
+        group: 'Documents',
         title: 'Other documents register',
         description: 'Other documents per vessel: where they came from, their folder and number of files.',
         icon: 'pi pi-folder-open',
@@ -386,6 +362,6 @@ export const REPORT_CONTEXTS: Record<ReportContextKey, ReportContext> = {
     documents: {
         title: 'All vessels',
         icon: 'pi pi-globe',
-        reports: [{ key: 'document-register' }, { key: 'certificate-expiry' }],
+        reports: [{ key: 'document-register' }],
     },
 };

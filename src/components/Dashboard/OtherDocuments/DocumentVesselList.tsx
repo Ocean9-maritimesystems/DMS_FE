@@ -8,7 +8,7 @@ interface VesselListProps {
     /** Called with the chosen vessel (one at a time), or an empty list when none. */
     onSelectionChange?: (selected: Vessel[]) => void;
     selectedVesselId?: number | null;
-    /** "All vessels" (the documents and certificates reports for the whole fleet) is selected. */
+    /** "All vessels" (the documents report for the whole fleet) is selected. */
     allSelected?: boolean;
     /** Shows the "All vessels" entry at the top of the list. */
     onAllVessels?: () => void;
@@ -86,7 +86,7 @@ const DocumentVesselList: React.FC<VesselListProps> = ({ onSelectionChange, sele
                         <i className="pi pi-globe od-vessel__icon" aria-hidden="true" />
                         <span className="od-vessel__text">
                             <span className="od-vessel__name">All vessels</span>
-                            <span className="od-vessel__meta">Documents register · Certificate expiry</span>
+                            <span className="od-vessel__meta">Documents register</span>
                         </span>
                         {allSelected && <i className="pi pi-chevron-right od-vessel__chev" aria-hidden="true" />}
                     </li>

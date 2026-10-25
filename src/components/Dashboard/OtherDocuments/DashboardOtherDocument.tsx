@@ -13,7 +13,7 @@ export interface DashboardProps {
 /**
  * Other Documents: pick a vessel on the left; its folders and documents open on the right, with
  * "New folder" and "New document". Documents added here stay at the office; documents added on board come up.
- * "All vessels" at the top of the list opens the fleet-wide reports (documents register, certificate expiry).
+ * "All vessels" at the top of the list opens the fleet-wide reports (documents register).
  */
 const DashboardOtherDocuments: React.FC<DashboardProps> = () => {
     const [vessel, setVessel] = useState<Vessel | null>(null);
