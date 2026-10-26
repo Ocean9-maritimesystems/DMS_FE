@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader from '../PageHeader';
 import dmsLifecycleService, { errorMessage } from '../../services/DMSLifecycleService';
 import { SearchHit } from '../../types/api';
 import { itemIcon, itemLink } from '../../config/itemLinks';
+import { pathOf, rememberSearch } from '../../config/searchReturn';
 import { formatDate } from '../utils/formatDate';
 import { highlightParts, htmlToText, queryWords } from '../utils/text';
 import './SearchPage.scss';
@@ -36,6 +37,7 @@ const Highlighted: React.FC<{ text: string; words: string[] }> = ({ text, words 
 const SearchPage: React.FC = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
+    const location = useLocation();
     const query = (searchParams.get('q') ?? '').trim();
     const filterKey = searchParams.get('types') ?? 'all';
     const filter = FILTERS.find((f) => f.key.toLowerCase() === filterKey.toLowerCase()) ?? FILTERS[0];
@@ -164,7 +166,9 @@ const SearchPage: React.FC = () => {
                                         </div>
                                         <h2 className="search-result-title">
                                             {link ? (
-                                                <Link to={link}><Highlighted text={title} words={words} /></Link>
+                                                <Link to={link} onClick={() => rememberSearch({ url: `${location.pathname}${location.search}`, query, target: pathOf(link) })}>
+                                                    <Highlighted text={title} words={words} />
+                                                </Link>
                                             ) : (
                                                 <Highlighted text={title} words={words} />
                                             )}
@@ -178,7 +182,7 @@ const SearchPage: React.FC = () => {
                                             <p className="search-nolink">
                                                 {hit.itemType === 'Suggestion'
                                                     ? 'Suggestions do not have a page in the office app yet.'
-                                                    : 'Open it from the Dashboard, Other Documents tab.'}
+                                                    : 'Open it from Other docs.'}
                                             </p>
                                         )}
                                     </div>

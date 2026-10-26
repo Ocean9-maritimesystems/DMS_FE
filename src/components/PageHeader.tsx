@@ -9,6 +9,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import authService from '../services/authService';
 import { COMPANY_NAME, ENV_LABEL } from '../config/appConfig';
 import { MANUAL_LINK_VIEW_OPTIONS, useManualLinkView } from '../config/manualLinkView';
+import { forgetSearch, readSearchReturn, SearchReturn } from '../config/searchReturn';
 import './PageHeader.scss';
 import './Features/Features.scss';
 
@@ -65,6 +66,15 @@ const PageHeader: React.FC<PageHeaderProps> = ({ title, subContent, actions }) =
 
   // Header search box: Enter opens the Search page. On that page it shows the current query.
   const onSearchPage = path.startsWith('/search');
+
+  // "Back to search results" while the page opened from a search result is on screen.
+  const [searchReturn, setSearchReturn] = useState<SearchReturn | null>(() => readSearchReturn());
+  useEffect(() => {
+    const value = readSearchReturn();
+    if (!value || onSearchPage) { setSearchReturn(null); return; }
+    if (path === value.target) setSearchReturn(value);
+    else { forgetSearch(); setSearchReturn(null); } // moved on to another page
+  }, [path, onSearchPage]);
   const [query, setQuery] = useState(onSearchPage ? searchParams.get('q') ?? '' : '');
   useEffect(() => {
     if (onSearchPage) setQuery(searchParams.get('q') ?? '');
@@ -84,7 +94,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({ title, subContent, actions }) =
         <img src="/logo.png" alt={`${COMPANY_NAME} logo`} className="logo1" />
         <div className="header-titles">
           <span className="header-company">{COMPANY_NAME}</span>
-          <h1 className="header-title">{title}</h1>
+          <h1 className="header-title" title={typeof title === 'string' ? title : undefined}>{title}</h1>
           {subContent && <div className="header-subcontent-text">{subContent}</div>}
         </div>
       </div>
@@ -110,20 +120,28 @@ const PageHeader: React.FC<PageHeaderProps> = ({ title, subContent, actions }) =
         })}
       </nav>
 
-      <form className="header-search" role="search" onSubmit={submitSearch}>
-        <i className="pi pi-search" aria-hidden="true" />
-        <input
-          type="search"
-          placeholder="Search…"
-          aria-label="Search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          maxLength={200}
-        />
-      </form>
-
+      {/* Second row, on the right: page actions, search, settings, user and log out. */}
       <div className="header-right">
+        {searchReturn && (
+          <button type="button" className="header-back" onClick={() => { forgetSearch(); navigate(searchReturn.url); }}
+            title="Back to the search results">
+            <i className="pi pi-arrow-left" aria-hidden="true" />
+            <span>Back to search results</span>
+            <span className="header-back-query">“{searchReturn.query}”</span>
+          </button>
+        )}
         {actions && <div className="header-actions">{actions}</div>}
+        <form className="header-search" role="search" onSubmit={submitSearch}>
+          <i className="pi pi-search" aria-hidden="true" />
+          <input
+            type="search"
+            placeholder="Search…"
+            aria-label="Search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            maxLength={200}
+          />
+        </form>
         <button
           type="button"
           className="header-settings"
