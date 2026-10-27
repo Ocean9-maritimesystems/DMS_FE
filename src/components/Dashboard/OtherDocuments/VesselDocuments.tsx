@@ -71,8 +71,8 @@ const VesselDocuments: React.FC<Props> = ({ vesselId, vesselName, vesselMeta }) 
         setLoading(true);
         try {
             const [tree, list] = await Promise.all([featureApi.folders.tree(), featureApi.folders.vesselDocuments(vesselId)]);
-            // This vessel's folders and the company folders for every vessel.
-            setFolders(tree.filter((f) => f.vesselID === vesselId || (f.vesselID === -1 && f.scope === 'Company')));
+            // This vessel's folders and the folders for every vessel.
+            setFolders(tree.filter((f) => f.vesselID === vesselId || f.vesselID === -1));
             setDocs(list);
         } catch (err) {
             notify.error(errorMessage(err), 'Could not load the documents');
@@ -340,12 +340,11 @@ const FolderFormDialog: React.FC<{
         try {
             if (edit) {
                 await featureApi.folders.update(edit.otherDocument_FolderID, {
-                    parentId: edit.parentID ?? null, name: name.trim(), scope: edit.scope, vesselId: edit.vesselID,
-                    viewRoles: edit.viewRoles ?? null, editRoles: edit.editRoles ?? null,
+                    parentId: edit.parentID ?? null, name: name.trim(), vesselId: edit.vesselID,
                 });
                 onSaved(edit.otherDocument_FolderID);
             } else {
-                const r = await featureApi.folders.create({ parentId, name: name.trim(), scope: 'Vessel', vesselId });
+                const r = await featureApi.folders.create({ parentId, name: name.trim(), vesselId });
                 onSaved(r?.id);
             }
         } catch (err) {
@@ -441,7 +440,7 @@ const NewDocumentDialog: React.FC<{
         try {
             let target = folderId;
             if (creatingFolder) {
-                const r = await featureApi.folders.create({ parentId: newFolderParent, name: newFolderName.trim(), scope: 'Vessel', vesselId });
+                const r = await featureApi.folders.create({ parentId: newFolderParent, name: newFolderName.trim(), vesselId });
                 target = r.id;
             }
             const form = new FormData();

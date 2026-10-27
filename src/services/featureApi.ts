@@ -155,10 +155,6 @@ export interface FolderItem {
     vesselName?: string;
     parentID?: number | null;
     folderName: string;
-    scope: 'Company' | 'Vessel' | 'Department' | 'Personal';
-    ownerUserID?: string;
-    viewRoles?: string;
-    editRoles?: string;
     fileCount: number;
     canEdit: boolean;
 }
@@ -166,10 +162,8 @@ export interface FolderItem {
 export interface SaveFolder {
     parentId?: number | null;
     name: string;
-    scope: string;
+    /** A vessel's folder: the vessel; -1 = every vessel (administrators); none = office only. Sub-folders follow their parent. */
     vesselId?: number | null;
-    viewRoles?: string | null;
-    editRoles?: string | null;
 }
 
 /** An Other Document as shown in a folder. */
