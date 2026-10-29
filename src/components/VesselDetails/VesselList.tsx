@@ -9,7 +9,8 @@ import dmsLifecycleService from '../../services/DMSLifecycleService';
 interface VesselListProps {
     vessels: Vessel[];
     selectedVesselIdList?: number[];
-    onSelectionChange?: (selected: number[]) => void;
+    /** The selected vessels (rows, not IDs). */
+    onSelectionChange?: (selected: Vessel[]) => void;
     isViewMode?: boolean;
     }
 
@@ -22,9 +23,9 @@ const VesselList: React.FC<VesselListProps> = ({ vessels, selectedVesselIdList, 
     const [allData, setAllData] = useState<Vessel[]>([]);
 
     useEffect(() => {
-        dmsLifecycleService.getApiCall('Vessel/GetVslType')
+        dmsLifecycleService.getApiCall<string[] | null>('Vessel/GetVslType')
             .then(data => {
-                const options = data.map((cat: any) => ({
+                const options = (data || []).map((cat) => ({
                     label: cat,
                     value: cat
                 }));
@@ -54,13 +55,13 @@ const VesselList: React.FC<VesselListProps> = ({ vessels, selectedVesselIdList, 
         return vslTypeMatch;
    });
 
-    const handleSelectionChange = (e: any) => {
+    const handleSelectionChange = (e: { value: Vessel[] }) => {
         if (isViewMode) return;
         setSelectedVessels(e.value);
         onSelectionChange?.(e.value);
     };
     
-    const onSearchChange = (e: any) => {
+    const onSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setSearchValue(value);
 

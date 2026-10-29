@@ -84,7 +84,9 @@ export const exportCsv = ({ title, columns, rows }: ExportInfo) => {
 // ------------------------------------------------------------------------------------------------ Excel
 
 export const exportExcel = async ({ title, filters, columns, rows }: ExportInfo) => {
-    const mod: any = await import('exceljs');
+    // exceljs comes as a CommonJS module: its exports are on .default in some bundles, at the top in others.
+    type ExcelModule = typeof import('exceljs');
+    const mod = (await import('exceljs')) as ExcelModule & { default?: ExcelModule };
     const ExcelJS = mod.default ?? mod;
     const wb = new ExcelJS.Workbook();
     wb.creator = COMPANY_NAME || 'DMS';
@@ -102,7 +104,7 @@ export const exportExcel = async ({ title, filters, columns, rows }: ExportInfo)
     header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     header.alignment = { vertical: 'middle', wrapText: true };
     header.height = 22;
-    header.eachCell((cell: any) => {
+    header.eachCell((cell) => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0072BC' } };
         cell.border = { bottom: { style: 'thin', color: { argb: 'FF005A94' } } };
     });
@@ -145,7 +147,9 @@ export const exportExcel = async ({ title, filters, columns, rows }: ExportInfo)
 
 export const exportPdf = async ({ title, filters, columns, rows, landscape }: ExportInfo) => {
     const [{ jsPDF }, autoTableModule] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
-    const autoTable: any = (autoTableModule as any).autoTable ?? (autoTableModule as any).default;
+    type AutoTable = typeof import('jspdf-autotable').default;
+    const tables = autoTableModule as unknown as { autoTable?: AutoTable; default?: AutoTable };
+    const autoTable = (tables.autoTable ?? tables.default) as AutoTable;
 
     const doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -178,7 +182,7 @@ export const exportPdf = async ({ title, filters, columns, rows, landscape }: Ex
     }
     const free = usable - [...fixed].reduce((s, i) => s + minWidth[i], 0);
     const freeWeight = widths.reduce((s, w, i) => (fixed.has(i) ? s : s + w), 0);
-    const columnStyles: Record<number, any> = {};
+    const columnStyles: Record<number, { cellWidth: number; halign: 'left' | 'right' }> = {};
     columns.forEach((c, i) => {
         columnStyles[i] = {
             cellWidth: fixed.has(i) ? minWidth[i] : (free * widths[i]) / freeWeight,

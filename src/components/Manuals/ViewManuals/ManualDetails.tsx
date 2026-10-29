@@ -33,15 +33,16 @@ export type ManualDetailsProp = {
     dM_ManualVersionID: string;
 };
 
-const ManualDetails: React.FC<ManualDetailsProps> = ({ dmManualVersionID, closeForm }) => {
+// closeForm: the dialog around the details closes itself (its X), nothing to close from here.
+const ManualDetails: React.FC<ManualDetailsProps> = ({ dmManualVersionID }) => {
    const [manualData, setManualData] = useState<ManualDetailsProp>();
    const [loading, setLoading] = useState(true);
    const { theme } = useTheme(); 
     
     useEffect(() => {
-        dmsLifecycleService.getApiCall(`Manuals/GetManualDetailsByVersionId/${dmManualVersionID}`)
-                .then((data: any) => {
-                    setManualData(data);
+        dmsLifecycleService.getApiCall<ManualDetailsProp | null>(`Manuals/GetManualDetailsByVersionId/${dmManualVersionID}`)
+                .then((data) => {
+                    setManualData(data ?? undefined);
                     setLoading(false);
                 })
                 .catch(() => {

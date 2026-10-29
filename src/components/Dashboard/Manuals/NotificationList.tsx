@@ -18,18 +18,19 @@ interface Notification {
     userId: string;
 }
 
-const NotificationList: React.FC<NotificationProps> = ({ userId }) => {
+// userId is not needed here: the API answers for the logged-in user.
+const NotificationList: React.FC<NotificationProps> = () => {
     const navigate = useNavigate();
       const [loading, setLoading] = useState(false);
       const [notifications, setNotifications] = useState<Notification[]>([]);
   
     const fetchNotifications = () => {
         setLoading(true);
-        dmsLifecycleService.getApiCall(`Manuals/GetManualNotifications?limit=10`)
-            .then((data: any) => {
+        dmsLifecycleService.getApiCall<(Partial<Notification> & { manualNotificationId?: number })[] | null>(`Manuals/GetManualNotifications?limit=10`)
+            .then((data) => {
                 if (data && Array.isArray(data)) {
                     // The API sends manualNotificationId; the list uses id.
-                    setNotifications(data.map((n: any) => ({ ...n, id: n.id ?? n.manualNotificationId, isRead: !!n.isRead })));
+                    setNotifications(data.map((n) => ({ ...n, id: (n.id ?? n.manualNotificationId) as number, isRead: !!n.isRead }) as Notification));
                 } else {
                     setNotifications([]);
                 }

@@ -15,7 +15,8 @@ export interface HQUser {
 interface HQUserListProps {
     hqUser: HQUser[];
     selectedHQUserList?: number[];
-    onSelectionChange?: (selected: number[]) => void;
+    /** The selected users (rows, not IDs). */
+    onSelectionChange?: (selected: HQUser[]) => void;
     isViewMode?: boolean;
 }
 
@@ -29,9 +30,9 @@ const HQUserList: React.FC<HQUserListProps> = ({ hqUser, selectedHQUserList, onS
     const [allData, setAllData] = useState<HQUser[]>([]);
 
     useEffect(() => {
-        dmsLifecycleService.getApiCall('HQUser/GetHQDept')
+        dmsLifecycleService.getApiCall<string[] | null>('HQUser/GetHQDept')
             .then(data => {
-                const options = data.map((cat: any) => ({
+                const options = (data || []).map((cat) => ({
                     label: cat,
                     value: cat
                 }));
@@ -39,9 +40,9 @@ const HQUserList: React.FC<HQUserListProps> = ({ hqUser, selectedHQUserList, onS
             })
             .catch(() => setHqDeptOptions([]));
 
-        dmsLifecycleService.getApiCall('HQUser/GetHQRoles')
+        dmsLifecycleService.getApiCall<string[] | null>('HQUser/GetHQRoles')
             .then(data => {
-                const options = data.map((cat: any) => ({
+                const options = (data || []).map((cat) => ({
                     label: cat,
                     value: cat
                 }));
@@ -74,13 +75,13 @@ const HQUserList: React.FC<HQUserListProps> = ({ hqUser, selectedHQUserList, onS
         return deptMatch && roleMatch;
    });
 
-    const handleSelectionChange = (e: any) => {
+    const handleSelectionChange = (e: { value: HQUser[] }) => {
         if (isViewMode) return;
         setSelectedHqUsers(e.value);
         onSelectionChange?.(e.value);
     };
 
-    const onSearchChange = (e: any) => {
+    const onSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setSearchValue(value);
         

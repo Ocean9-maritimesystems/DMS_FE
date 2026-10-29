@@ -34,7 +34,7 @@ interface ManualNode {
         category: string;
         lastUpdated: string;
         isMatch?: boolean;
-        [k: string]: any;
+        [k: string]: unknown;
     };
     children?: ManualNode[];
 }

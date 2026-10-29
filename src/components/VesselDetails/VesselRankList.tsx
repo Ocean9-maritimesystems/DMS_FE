@@ -8,7 +8,8 @@ import { VesselRank } from './VesselDetails';
 interface VesselRankListProps {
     vslRank: VesselRank[];
     selectedVesselRankList?: string[];
-    onSelectionChange?: (selected: number[]) => void;
+    /** The selected ranks (rows, not names). */
+    onSelectionChange?: (selected: VesselRank[]) => void;
     isViewMode?: boolean;
 }
 
@@ -49,13 +50,13 @@ const VesselRankList: React.FC<VesselRankListProps> = ({ vslRank, selectedVessel
         return deptMatch;
    });
 
-    const handleSelectionChange = (e: any) => {
+    const handleSelectionChange = (e: { value: VesselRank[] }) => {
         if (isViewMode) return;
         setSelectedVslRank(e.value);
         onSelectionChange?.(e.value);
     };
 
-    const onSearchChange = (e: any) => {
+    const onSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setSearchValue(value);
 

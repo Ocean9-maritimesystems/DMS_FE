@@ -47,12 +47,14 @@ const OtherDocumentList: React.FC<OtherDocumentListProps> = ({ vesselId, vesselN
     useEffect(() => {
         const fetchDocumentTypes = async () => {
             try {
-                const types = await dmsLifecycleService.apiCall('OtherDocument/GetTypes', 'get', {
+                // The API has sent these lists in both camelCase and PascalCase.
+                type TypeRow = { documentType?: string; DocumentType?: string; otherDocument_TypeID?: number; OtherDocument_TypeID?: number };
+                const types = await dmsLifecycleService.apiCall<TypeRow[] | null>('OtherDocument/GetTypes', 'get', {
                     vesselId: vesselId ?? 0,
                     vslID: vesselId ?? 0,
                     vesselID: vesselId ?? 0
                 });
-                const mappedTypes = (Array.isArray(types) ? types : []).map((item: any) => ({
+                const mappedTypes = (Array.isArray(types) ? types : []).map((item) => ({
                     label: item.documentType || item.DocumentType || 'Unknown',
                     value: item.documentType || item.DocumentType || '',
                     docTypeId: Number(item.otherDocument_TypeID ?? item.OtherDocument_TypeID ?? 0)
@@ -72,14 +74,22 @@ const OtherDocumentList: React.FC<OtherDocumentListProps> = ({ vesselId, vesselN
             setLoading(true);
 
             try {
-                const response = await dmsLifecycleService.apiCall('OtherDocument/GetDocuments', 'get', {
+                type DocumentRow = {
+                    otherDocumentMasterID?: number; OtherDocumentMasterID?: number;
+                    documentTitle?: string; DocumentTitle?: string;
+                    documentType?: string; DocumentType?: string;
+                    uploadedBy?: string; UploadedBy?: string;
+                    uploadedOn?: string; UploadedOn?: string;
+                    vesselID?: number; VesselID?: number; vslID?: number; VslID?: number;
+                };
+                const response = await dmsLifecycleService.apiCall<DocumentRow[] | { data?: DocumentRow[] } | null>('OtherDocument/GetDocuments', 'get', {
                     vesselId: vesselId ?? 0,
                     documentType: selectedType || undefined
                 });
 
-                const rows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
+                const rows: DocumentRow[] = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
 
-                const mappedRows = rows.map((item: any) => ({
+                const mappedRows = rows.map((item) => ({
                     documentID: item.otherDocumentMasterID ?? item.OtherDocumentMasterID ?? 0,
                     title: item.documentTitle ?? item.DocumentTitle ?? 'Untitled document',
                     documentType: item.documentType ?? item.DocumentType ?? 'Unknown',

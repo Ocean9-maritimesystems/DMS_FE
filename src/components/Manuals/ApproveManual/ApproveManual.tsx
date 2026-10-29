@@ -16,7 +16,6 @@ const ApproveManual: React.FC<ApproveManualProps> = ({
     manualName,
     version,
     status,
-    comments,
     onApprove,
     onReject,
     onClose

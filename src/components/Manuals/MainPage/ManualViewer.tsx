@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ListBox } from 'primereact/listbox';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { ListBox, type ListBoxChangeEvent } from 'primereact/listbox';
 import { InputText } from 'primereact/inputtext';
 import { Button } from 'primereact/button';
 import { Skeleton } from 'primereact/skeleton';
 import { TreeNode } from 'primereact/treenode';
 import PageHeader from '../../PageHeader';
 import ManualsContent from './ManualsContent';
-import { useDispatch, useSelector } from 'react-redux';
-import { RootState } from '../../../store/store';
+import { useDispatch } from 'react-redux';
 import { setError, setSelectedManualNodeObj } from '../../../store/slices/appSlice';
 import './ManualViewer.scss';
 import dmsLifecycleService from '../../../services/DMSLifecycleService';
@@ -29,39 +28,40 @@ interface ManualViewerProps {
 
 const ManualViewer: React.FC<ManualViewerProps> = ({ calledMode, userId }) => {
     const dispatch = useDispatch();
-    const appInfo = useSelector((state: RootState) => state.appInfo);
     const [manuals, setManuals] = useState<TreeNodeData[]>([]);
     const [selectedManual, setSelectedManual] = useState<TreeNodeData | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
     const scrollRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        fetchManuals(calledMode);
-    }, [userId, calledMode]);
-
-    const fetchManuals = async (calledMode: string) => {
+    const fetchManuals = useCallback(async () => {
         setLoading(true);
         try {
-            const data: TreeNodeData[] = await dmsLifecycleService.getApiCall(`Manuals/GetManualListBasedOnCalledMode?calledMode=${calledMode}&userId=${userId}`);
+            const data = (await dmsLifecycleService.getApiCall<TreeNodeData[] | null>(
+                `Manuals/GetManualListBasedOnCalledMode?calledMode=${encodeURIComponent(calledMode)}&userId=${encodeURIComponent(userId)}`)) || [];
             setManuals(data);
-            setSelectedManual(data[0]);
-            dispatch(setSelectedManualNodeObj(data[0]));
-        } catch (error) {
+            setSelectedManual(data[0] ?? null);
+            dispatch(setSelectedManualNodeObj(data[0] ?? null));
+        } catch {
             dispatch(setError('Failed to fetch manuals'));
         } finally {
             setLoading(false);
         }
-    };
+    }, [calledMode, userId, dispatch]);
+
+    useEffect(() => {
+        fetchManuals();
+    }, [fetchManuals]);
 
     const filteredManuals = manuals.filter(manual =>
         manual.label?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         manual.data.category.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const onSelectionChange = (e: any) => {
-       setSelectedManual(e.value)
-       dispatch(setSelectedManualNodeObj(e.value));
+    const onSelectionChange = (e: ListBoxChangeEvent) => {
+       const manual = (e.value as TreeNodeData | null) ?? null;
+       setSelectedManual(manual);
+       dispatch(setSelectedManualNodeObj(manual));
     };
 
     const manualTemplate = (manual: TreeNodeData) => {
@@ -87,7 +87,7 @@ const ManualViewer: React.FC<ManualViewerProps> = ({ calledMode, userId }) => {
                         <Button 
                             icon="pi pi-refresh" 
                             rounded 
-                            onClick={() => fetchManuals(calledMode)}
+                            onClick={() => fetchManuals()}
                             tooltip="Refresh"
                         />
                     </div>

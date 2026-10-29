@@ -18,18 +18,19 @@ interface Notification {
     userId: string;
 }
 
-const NotificationListCicrular: React.FC<NotificationProps> = ({ userId }) => {
+// userId is not needed here: the API answers for the logged-in user.
+const NotificationListCicrular: React.FC<NotificationProps> = () => {
     const navigate = useNavigate();
       const [loading, setLoading] = useState(false);
       const [notifications, setNotifications] = useState<Notification[]>([]);
   
     const fetchNotifications = () => {
         setLoading(true);
-        dmsLifecycleService.getApiCall(`Circular/GetCircularsNotifications?limit=10`)
-            .then((data: any) => {
+        dmsLifecycleService.getApiCall<(Partial<Notification> & { cirNotificationId?: number })[] | null>(`Circular/GetCircularsNotifications?limit=10`)
+            .then((data) => {
                 if (data && Array.isArray(data)) {
                     // The API sends cirNotificationId; the list uses id.
-                    setNotifications(data.map((n: any) => ({ ...n, id: n.id ?? n.cirNotificationId, isRead: !!n.isRead })));
+                    setNotifications(data.map((n) => ({ ...n, id: (n.id ?? n.cirNotificationId) as number, isRead: !!n.isRead }) as Notification));
                 } else {
                     setNotifications([]);
                 }

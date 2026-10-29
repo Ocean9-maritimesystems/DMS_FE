@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import ManualsTreeView from './ManualsTreeView';
+import ManualsTreeView, { type ManualsTreeViewHandle } from './ManualsTreeView';
 import ManualsContent from './ManualsContent';
 import PageHeader from '../../PageHeader';
 import ManualLinkList from './ManualLinkList';
@@ -22,6 +22,15 @@ export interface ManualDetailsProps {
     userId: string;
 }
 
+/** api/Manuals/GetUserManualCounts */
+interface UserManualCounts {
+    approvalCnt?: number;
+    reviewCnt?: number;
+    ackCnt?: number;
+    newCnt?: number;
+    favouriteCnt?: number;
+}
+
 const ManualMainPage: React.FC<ManualDetailsProps> = ({ userId }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     // Tree filter from a dashboard link (/manuals?mode=new) or a menu link below the tree.
@@ -41,11 +50,11 @@ const ManualMainPage: React.FC<ManualDetailsProps> = ({ userId }) => {
     const [ackCnt, setAckCnt] = useState(0);
     const [newCnt, setNewCnt] = useState(0);
     const [favouriteCnt, setFavouriteCnt] = useState(0);
-    const treeViewRef = useRef<any>(null);
+    const treeViewRef = useRef<ManualsTreeViewHandle>(null);
 
-    const setUserActionCounts = () => {
-        dmsLifecycleService.getApiCall(`Manuals/GetUserManualCounts?userId=${userId}`)
-            .then((data: any) => {
+    const setUserActionCounts = useCallback(() => {
+        dmsLifecycleService.getApiCall<UserManualCounts | null>(`Manuals/GetUserManualCounts?userId=${encodeURIComponent(userId)}`)
+            .then((data) => {
                 if (data) {
                     setApprovalCnt(data.approvalCnt || 0);
                     setReviewCnt(data.reviewCnt || 0);
@@ -61,11 +70,11 @@ const ManualMainPage: React.FC<ManualDetailsProps> = ({ userId }) => {
                 setNewCnt(0);
                 setFavouriteCnt(0);
             });
-    };
-
-    useEffect(() => {   
-        setUserActionCounts();
     }, [userId]);
+
+    useEffect(() => {
+        setUserActionCounts();
+    }, [setUserActionCounts]);
 
     /** Tree setting: show only the manuals behind the link (parents visible but disabled).
      *  List setting: show the manuals behind the link as a list instead of the tree. */

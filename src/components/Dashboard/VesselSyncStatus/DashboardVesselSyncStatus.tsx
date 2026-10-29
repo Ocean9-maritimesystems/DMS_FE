@@ -23,6 +23,8 @@ interface MonitorRow {
     lastStatus?: string;
     lastError?: string;
     itemsQueued: number;
+    /** Changes of any synced record waiting for the vessel's next sync. */
+    changesWaiting?: number;
     itemsTotal: number;
     alertsPending: number;
     acksPending: number;
@@ -67,7 +69,10 @@ const fullTime = (iso?: string) => {
 /** Bar and caption for the "Pending package" column. */
 const packageState = (row: MonitorRow, syncInstalled: boolean) => {
     const queued = row.itemsQueued || 0;
-    const queuedText = `${queued} queued`;
+    const changes = row.changesWaiting || 0;
+    const queuedText = queued > 0
+        ? `${queued} item${queued === 1 ? '' : 's'} queued`
+        : changes > 0 ? `${changes} change${changes === 1 ? '' : 's'} queued` : '0 queued';
     if (syncInstalled && !row.hasKey) {
         return { tone: 'idle', percent: 0, caption: `No sync key yet · ${row.itemsTotal} items` };
     }
@@ -85,8 +90,8 @@ const packageState = (row: MonitorRow, syncInstalled: boolean) => {
         const percent = row.progressPercent ?? Math.round(((row.itemsTotal - queued) / Math.max(row.itemsTotal, 1)) * 100);
         return { tone: 'busy', percent: Math.min(Math.max(percent, 4), 100), caption: `${row.currentActivity} · ${queuedText}` };
     }
-    if (queued === 0) {
-        return { tone: 'done', percent: 100, caption: 'Up to date · 0 queued' };
+    if (queued === 0 && changes === 0) {
+        return { tone: 'done', percent: 100, caption: 'Up to date · nothing queued' };
     }
     const total = Math.max(row.itemsTotal, queued);
     const percent = Math.round(((total - queued) / total) * 100);
@@ -210,8 +215,8 @@ const DashboardVesselSyncStatus: React.FC = () => {
                     <span>Awaiting acknowledgement</span>
                     <strong>{totals.acks}</strong>
                 </div>
-                <div className="sm-tile" title="Acknowledgements made on board that the ships have not sent to the office yet">
-                    <span>Queued from ships</span>
+                <div className="sm-tile" title="Acknowledgements and other records made on board that the ships have not sent to the office yet">
+                    <span>Waiting on ships</span>
                     <strong>{data?.syncInstalled ? totals.fromShips : '—'}</strong>
                 </div>
             </div>
@@ -253,7 +258,7 @@ const DashboardVesselSyncStatus: React.FC = () => {
                                         </div>
                                         <div className="sm-sub">
                                             {pkg.caption}
-                                            {row.pendingOnShip > 0 && <> · {row.pendingOnShip} ack{row.pendingOnShip > 1 ? 's' : ''} on board</>}
+                                            {row.pendingOnShip > 0 && <> · {row.pendingOnShip} waiting on board</>}
                                         </div>
                                     </td>
                                     <td>{priorityCell(row)}</td>
@@ -287,7 +292,7 @@ const DashboardVesselSyncStatus: React.FC = () => {
                     tooltipOptions={{ position: 'top', showOnDisabled: true }}
                 />
                 {data?.syncInstalled && (
-                    <span className="sm-muted">Online = contacted the office in the last {data.onlineMinutes} minutes.</span>
+                    <span className="sm-muted">Online = heard from in the last {data.onlineMinutes} minutes (ships check in every 15 minutes between syncs).</span>
                 )}
             </div>
 

@@ -1,6 +1,7 @@
 import { Chart } from 'primereact/chart';
 import { useEffect, useState } from 'react';
 import { useTheme } from '../../../contexts/ThemeContext';
+import type { TooltipItem } from 'chart.js';
 
 interface ChartProps {
     newCnt : number ;
@@ -60,7 +61,7 @@ const ManualChart: React.FC<ChartProps> = ({ newCnt, toApprovalCnt, releasedCnt,
                 borderWidth: 1,
                 cornerRadius: 8,
                 callbacks: {
-                    label: function(context: any) {
+                    label: function(context: TooltipItem<'bar'>) {
                         const label = context.label || '';
                         const value = context.parsed.y || 0;
                         const total = totalDocuments;
@@ -84,7 +85,7 @@ const ManualChart: React.FC<ChartProps> = ({ newCnt, toApprovalCnt, releasedCnt,
                         size: 12
                     },
                     stepSize: Math.ceil(totalDocuments / 10) || 1,
-                    callback: function(value: any) {
+                    callback: function(value: string | number) {
                         return Number.isInteger(value) ? value : '';
                     }
                 },

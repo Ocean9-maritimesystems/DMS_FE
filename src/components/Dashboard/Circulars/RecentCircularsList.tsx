@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import dmsLifecycleService from '../../../services/DMSLifecycleService';
 
@@ -23,10 +23,10 @@ const RecentCircularsList: React.FC<RecentCircularsListProps> = ({ userId, circu
     const [loading, setLoading] = useState(false);
     const [circulars, setCirculars] = useState<Circular[]>([]);
 
-    const fetchRecentCirculars = () => {
+    const fetchRecentCirculars = useCallback(() => {
         setLoading(true);
-        dmsLifecycleService.getApiCall(`Circular/GetRecentCirculars?circularType=${circularType}&limit=${limit}`)
-            .then((data: any) => {
+        dmsLifecycleService.getApiCall<Circular[] | null>(`Circular/GetRecentCirculars?circularType=${circularType}&limit=${limit}`)
+            .then((data) => {
                 if (data && Array.isArray(data)) {
                     setCirculars(data);
                 } else {
@@ -40,7 +40,7 @@ const RecentCircularsList: React.FC<RecentCircularsListProps> = ({ userId, circu
             .finally(() => {
                 setLoading(false);
             });
-    };
+    }, [circularType, limit]);
 
     const getPriorityClass = (priority: string) => {
         switch (priority?.toLowerCase()) {
@@ -103,9 +103,10 @@ const RecentCircularsList: React.FC<RecentCircularsListProps> = ({ userId, circu
         navigate(`/circulars?cirmode=${mode}`);
     };
 
+    // Reloaded for another user, type or count (userId: the list is the logged-in user's).
     useEffect(() => {
         fetchRecentCirculars();
-    }, [userId, circularType]);
+    }, [fetchRecentCirculars, userId]);
 
     return (
         <div className="recent-circulars-container">

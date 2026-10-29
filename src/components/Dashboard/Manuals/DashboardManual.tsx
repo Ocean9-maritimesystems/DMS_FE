@@ -27,8 +27,8 @@ const DashboardManual: React.FC<DashboardProps> = ({ userId }) => {
     const navigate = useNavigate();
 
     const setUserActionCounts = useCallback(() => {
-        dmsLifecycleService.getApiCall(`Manuals/GetDashboardManualCounts?userId=${userId}`)
-            .then((data: any) => {
+        dmsLifecycleService.getApiCall<{ [count: string]: number | undefined } | null>(`Manuals/GetDashboardManualCounts?userId=${userId}`)
+            .then((data) => {
                 if (data) {
                     setNewCnt(data.newCnt || 0);
                     setToApprovalCnt(data.toApproveCnt || 0); // API field is toApproveCnt
@@ -221,4 +221,4 @@ const DashboardManual: React.FC<DashboardProps> = ({ userId }) => {
     );
 };
 
-export default DashboardManual;
+export default DashboardManual;

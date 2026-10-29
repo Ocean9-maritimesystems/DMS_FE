@@ -41,6 +41,21 @@ export interface VesselRank {
     userDept?: string;
 }
 
+/** api/Manuals/GetManualRightsUsersAsync */
+export interface ManualRightsUsers {
+    vesselList?: Vessel[];
+    vslRankList?: VesselRank[];
+    hqUserList?: HQUser[];
+}
+
+/** api/Manuals/GetSelectedManualRightsList */
+interface SelectedManualRights {
+    dM_ManualID?: number;
+    vesselIdList?: number[];
+    vesselRankList?: string[];
+    hQ_UsersIDList?: number[];
+}
+
 const VesselDetails: React.FC<VesselFormProps> = ({ manualTitle, onSubmit, closeForm, selectedAction, selectedManualID }) => {
     const [form, setForm] = useState<VesselFormData>(defaultData);
     const [vslRank, setVslRank] = useState<VesselRank[]>([]);
@@ -50,10 +65,10 @@ const VesselDetails: React.FC<VesselFormProps> = ({ manualTitle, onSubmit, close
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const data = await dmsLifecycleService.getApiCall('Manuals/GetManualRightsUsersAsync');
-                setVesselList(data.vesselList);
-                setVslRank(data.vslRankList);
-                setHqUser(data.hqUserList);
+                const data = await dmsLifecycleService.getApiCall<ManualRightsUsers | null>('Manuals/GetManualRightsUsersAsync');
+                setVesselList(data?.vesselList ?? []);
+                setVslRank(data?.vslRankList ?? []);
+                setHqUser(data?.hqUserList ?? []);
             } catch {
                 setVslRank([]);
                 setVesselList([]);
@@ -62,7 +77,7 @@ const VesselDetails: React.FC<VesselFormProps> = ({ manualTitle, onSubmit, close
             
             if ((selectedAction === 'Edit' || selectedAction === 'View') && selectedManualID > 0) {
                 try {
-                    const data: any = await dmsLifecycleService.getApiCall(`Manuals/GetSelectedManualRightsList/${selectedManualID}`);
+                    const data = await dmsLifecycleService.getApiCall<SelectedManualRights>(`Manuals/GetSelectedManualRightsList/${selectedManualID}`);
                  
                     setForm({
                         DM_ManualID: data.dM_ManualID ?? selectedManualID ?? -1,
@@ -93,17 +108,17 @@ const VesselDetails: React.FC<VesselFormProps> = ({ manualTitle, onSubmit, close
         onSubmit(form);
     };
 
-    const handleVesselSelectionChange = (selected: any[]) => {
+    const handleVesselSelectionChange = (selected: Vessel[]) => {
         const vesselIDs = selected.map(v => v.vesselID);
         setForm(prev => ({ ...prev, VesselIdList: vesselIDs }));
     };
 
-    const handleVesselRankSelectionChange = (selected: any[]) => {
+    const handleVesselRankSelectionChange = (selected: VesselRank[]) => {
         const vslRank = selected.map(v => v.userRank);
         setForm(prev => ({ ...prev, VesselRankList: vslRank }));
     };
 
-    const handleHQUserSelectionChange = (selected: any[]) => {
+    const handleHQUserSelectionChange = (selected: HQUser[]) => {
         const hqUser = selected.map(v => v.hQ_UsersID);
         setForm(prev => ({ ...prev, HQ_UsersIDList: hqUser }));
     };

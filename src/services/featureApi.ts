@@ -253,7 +253,7 @@ export const formatSize = (bytes: number) =>
     bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : bytes >= 1024 ? `${Math.round(bytes / 1024)} KB` : `${bytes} B`;
 
 /** Where an item opens in the office app. */
-export const itemLink = (itemType: string, itemId: number): { pathname: string; search?: string; state?: any } => {
+export const itemLink = (itemType: string, itemId: number): { pathname: string; search?: string; state?: unknown } => {
     switch (itemType) {
         case 'Manual':
             return { pathname: '/manuals', search: `?id=${itemId}` };
@@ -282,8 +282,13 @@ const api = dmsLifecycleService;
 
 const featureApi = {
     vessels: async (): Promise<VesselOption[]> => {
-        const data = await api.getApiCall('Vessel/GetVessels');
-        return (data || []).map((v: any) => ({ vesselID: v.vesselID ?? v.vesselId, vslName: v.vslName ?? v.vesselName ?? v.name ?? String(v.vesselID ?? v.vesselId) }));
+        // The vessel list has come with either spelling of the ID and several names for the name.
+        type VesselRow = { vesselID?: number; vesselId?: number; vslName?: string; vesselName?: string; name?: string };
+        const data = await api.getApiCall<VesselRow[] | null>('Vessel/GetVessels');
+        return (data || []).map((v) => ({
+            vesselID: (v.vesselID ?? v.vesselId) as number,
+            vslName: v.vslName ?? v.vesselName ?? v.name ?? String(v.vesselID ?? v.vesselId),
+        }));
     },
 
     pending: {

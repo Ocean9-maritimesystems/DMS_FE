@@ -20,13 +20,9 @@ const DashboardCirculars: React.FC<DashboardProps> = ({ userId }) => {
     const [reports, setReports] = useState<ReportContextKey | null>(null);
     const navigate = useNavigate();
 
-    const handleBrowseCirculars = () => {
-        navigate('/main');
-    };
-
     const setUserActionCounts = () => {
-        dmsLifecycleService.getApiCall(`Circular/GetDashboardCircularCounts`)
-            .then((data: any) => {
+        dmsLifecycleService.getApiCall<{ totalCirculars?: number; totalAlerts?: number } | null>(`Circular/GetDashboardCircularCounts`)
+            .then((data) => {
                 if (data) {
                     setTotalCirculars(data.totalCirculars || 0);
                     setTotalAlerts(data.totalAlerts || 0);
@@ -116,4 +112,4 @@ const DashboardCirculars: React.FC<DashboardProps> = ({ userId }) => {
     );
 };
 
-export default DashboardCirculars;
+export default DashboardCirculars;

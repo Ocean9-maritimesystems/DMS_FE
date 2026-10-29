@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { setError } from '../../../store/slices/appSlice';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Dialog } from 'primereact/dialog';
@@ -41,18 +40,11 @@ const UserManualList: React.FC<UserManualProps> = ({callMode, userId}) => {
     const [usersManualData, setUsersManualData] = useState<userDetails[]>([]);
     
     useEffect(() => {
-        try {
-            dmsLifecycleService.getApiCall(`Manuals/GetUserManualListForCalledMode?userID=${userId}&calledMode=${callMode}`)
-                .then((data: any) => {
-                   setUsersManualData(data);
-                   setIsLoading(false);
-              })
-                .catch(() => {
-                    setUsersManualData([]);
-                });
-            } catch (err: any) {
-                setError(err.message || 'Error fetching data');
-            } 
+        // A failed load shows an empty list (before, the list stayed on "loading" for ever).
+        dmsLifecycleService.getApiCall<userDetails[] | null>(`Manuals/GetUserManualListForCalledMode?userID=${userId}&calledMode=${callMode}`)
+            .then((data) => setUsersManualData(data || []))
+            .catch(() => setUsersManualData([]))
+            .finally(() => setIsLoading(false));
     }, [userId, callMode]);
     
     const callManualDetails = (dm_ManualVersionID: number) => {

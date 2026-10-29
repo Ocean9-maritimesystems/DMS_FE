@@ -106,7 +106,11 @@ export const ReportView: React.FC<ReportViewProps> = ({ report, vessels, docType
         ...vessels.map((v) => ({ label: v.vslName, value: v.vesselID as number | null })),
     ], [vessels, report.vesselWithOffice]);
 
-    const itemTypeOptions = use?.itemTypes ?? (report.itemTypes === 'documentTypes' ? docTypes : report.itemTypes ?? []);
+    // Kept as one array between renders, so the export text below is not rebuilt on every render.
+    const useItemTypes = use?.itemTypes;
+    const itemTypeOptions = useMemo(
+        () => useItemTypes ?? (report.itemTypes === 'documentTypes' ? docTypes : report.itemTypes ?? []),
+        [useItemTypes, report.itemTypes, docTypes]);
     /** One item type only (e.g. manuals): it is applied, not offered. */
     const showItemType = report.filters.includes('itemType') && itemTypeOptions.length !== 1;
 

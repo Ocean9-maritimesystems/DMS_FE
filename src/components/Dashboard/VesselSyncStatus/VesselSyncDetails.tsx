@@ -108,6 +108,57 @@ const duration = (from: string, to?: string | null) => {
     return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
 };
 
+/** One sync cycle of the vessel: the calls it made close together (a gap of more than 10 minutes starts a new one). */
+interface SyncCycle {
+    id: number;
+    startedUtc: string;
+    finishedUtc?: string | null;
+    /** Records the vessel sent (acknowledgements, documents, ...). */
+    up: number;
+    /** Records the vessel received. */
+    down: number;
+    calls: number;
+    status: 'OK' | 'Failed';
+    errors: string[];
+}
+
+const toMs = (value?: string | null) =>
+    value ? new Date(value.endsWith('Z') || value.includes('+') ? value : `${value}Z`).getTime() : NaN;
+
+const CYCLE_GAP_MS = 10 * 60 * 1000;
+
+const groupCycles = (entries: VesselSyncLogEntry[]): SyncCycle[] => {
+    const ascending = [...entries].sort((a, b) => toMs(a.startedUtc) - toMs(b.startedUtc) || a.syncLogID - b.syncLogID);
+    const cycles: SyncCycle[] = [];
+    let current: SyncCycle | null = null;
+    let lastEnd = 0;
+    for (const e of ascending) {
+        const start = toMs(e.startedUtc);
+        const end = toMs(e.finishedUtc ?? e.startedUtc);
+        if (!current || start - lastEnd > CYCLE_GAP_MS) {
+            current = { id: e.syncLogID, startedUtc: e.startedUtc, finishedUtc: e.finishedUtc, up: 0, down: 0, calls: 0, status: 'OK', errors: [] };
+            cycles.push(current);
+        }
+        current.calls += 1;
+        if (e.direction === 'Down') current.down += e.itemsCount || 0;
+        else current.up += e.itemsCount || 0;
+        if (e.status !== 'OK') {
+            current.status = 'Failed';
+            if (e.error && !current.errors.includes(e.error)) current.errors.push(e.error);
+        }
+        if (!Number.isNaN(end) && end >= lastEnd) {
+            lastEnd = end;
+            current.finishedUtc = e.finishedUtc ?? e.startedUtc;
+        }
+    }
+    return cycles.reverse();
+};
+
+const HISTORY_VIEWS = [
+    { label: 'Syncs', value: 'cycles' },
+    { label: 'Calls', value: 'calls' },
+];
+
 const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId, vesselName, onHide, onChanged }) => {
     const [tab, setTab] = useState(0);
     const [items, setItems] = useState<VesselSyncItem[]>([]);
@@ -120,6 +171,7 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyError, setHistoryError] = useState('');
     const [historyFilter, setHistoryFilter] = useState('all');
+    const [historyView, setHistoryView] = useState<'cycles' | 'calls'>('cycles');
 
     // Sync key and resync
     const [newKey, setNewKey] = useState('');
@@ -152,6 +204,7 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
         setTab(0);
         setTypeFilter('all');
         setHistoryFilter('all');
+        setHistoryView('cycles');
         setSearch('');
         setNewKey('');
         setCopied(false);
@@ -186,6 +239,11 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
     const shownEntries = useMemo(
         () => entries.filter((e) => historyFilter === 'all' || (historyFilter === 'OK' ? e.status === 'OK' : e.status !== 'OK')),
         [entries, historyFilter],
+    );
+    const cycles = useMemo(() => groupCycles(entries), [entries]);
+    const shownCycles = useMemo(
+        () => cycles.filter((c) => historyFilter === 'all' || (historyFilter === 'OK' ? c.status === 'OK' : c.status !== 'OK')),
+        [cycles, historyFilter],
     );
     const lastSync = entries[0];
     const lastOk = entries.find((e) => e.status === 'OK');
@@ -372,6 +430,8 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
                 {setupBody()}
                 {history?.keyError && <span className="vs-setup-error"><i className="pi pi-exclamation-triangle" /> The sync key could not be read: {history.keyError}</span>}
                 <div className="vs-toolbar">
+                    <SelectButton value={historyView} options={HISTORY_VIEWS} onChange={(e) => e.value && setHistoryView(e.value)} className="vs-type-filter"
+                        tooltip="Syncs: one row per sync cycle of the vessel. Calls: every call it made." tooltipOptions={{ position: 'top' }} />
                     <SelectButton value={historyFilter} options={HISTORY_FILTERS} onChange={(e) => e.value && setHistoryFilter(e.value)} className="vs-type-filter" />
                     <span className="vs-history-facts">
                         <span>Last sync <strong>{lastSync ? formatDateTime(lastSync.startedUtc) : 'never'}</strong></span>
@@ -380,6 +440,38 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
                     </span>
                     <Button type="button" icon="pi pi-refresh" className="p-button-text p-button-sm" aria-label="Refresh" title="Refresh" onClick={loadHistory} />
                 </div>
+                {historyView === 'cycles' ? (
+                <DataTable
+                    value={shownCycles}
+                    dataKey="id"
+                    size="small"
+                    stripedRows
+                    loading={historyLoading}
+                    paginator={shownCycles.length > 15}
+                    rows={15}
+                    rowsPerPageOptions={[15, 30, 50]}
+                    paginatorTemplate={PAGER}
+                    currentPageReportTemplate={PAGE_REPORT}
+                    scrollable
+                    scrollHeight="flex"
+                    className="vs-table"
+                    emptyMessage={cycles.length ? 'No syncs match.' : 'No syncs recorded for this vessel yet.'}
+                >
+                    <Column header="Started" body={(c: SyncCycle) => formatDateTime(c.startedUtc)} style={{ width: 180 }} />
+                    <Column header="Took" body={(c: SyncCycle) => duration(c.startedUtc, c.finishedUtc)} style={{ width: 80 }} />
+                    <Column header="To vessel" body={(c: SyncCycle) => (
+                        <span className="vs-type"><i className="pi pi-arrow-down" />{c.down}</span>
+                    )} style={{ width: 95 }} />
+                    <Column header="From vessel" body={(c: SyncCycle) => (
+                        <span className="vs-type"><i className="pi pi-arrow-up" />{c.up}</span>
+                    )} style={{ width: 105 }} />
+                    <Column header="Calls" field="calls" style={{ width: 65 }} />
+                    <Column header="Status" body={(c: SyncCycle) => (
+                        <span className={c.status === 'OK' ? 'vs-pill ok' : 'vs-pill pending'}>{c.status}</span>
+                    )} style={{ width: 90 }} />
+                    <Column header="Error" body={(c: SyncCycle) => <span className="vs-muted">{c.errors.join(' | ')}</span>} />
+                </DataTable>
+                ) : (
                 <DataTable
                     value={shownEntries}
                     dataKey="syncLogID"
@@ -410,6 +502,7 @@ const VesselSyncDetails: React.FC<VesselSyncDetailsProps> = ({ visible, vesselId
                     <Column header="Took" body={(r: VesselSyncLogEntry) => duration(r.startedUtc, r.finishedUtc)} style={{ width: 80 }} />
                     <Column header="Error" body={(r: VesselSyncLogEntry) => <span className="vs-muted">{r.error}</span>} />
                 </DataTable>
+                )}
             </>
         );
     };

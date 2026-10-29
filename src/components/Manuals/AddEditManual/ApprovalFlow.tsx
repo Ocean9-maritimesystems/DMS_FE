@@ -13,11 +13,11 @@ const ApprovalFlow: React.FC<ApprovalFlowProps> = ({ currentFlow }) => {
     const [approvalFlowList, setApprovalFlowList] = useState<{ flowDesc: string }[]>([]);
 
     useEffect(() => {
-      dmsLifecycleService.getApiCall(`Manuals/GetApprovalDetailsForFlowID/${currentFlow}`)
-        .then((data: any) => {
-          let list: any[] = [];
+      dmsLifecycleService.getApiCall<{ approvalFlow?: string }[] | null>(`Manuals/GetApprovalDetailsForFlowID/${currentFlow}`)
+        .then((data) => {
+          let list: { flowDesc: string }[] = [];
           if (Array.isArray(data)) {
-            list = data.map((item: any) => ({ flowDesc: item.approvalFlow || '' }));
+            list = data.map((item) => ({ flowDesc: item.approvalFlow || '' }));
           } 
           setApprovalFlowList(list);
         })

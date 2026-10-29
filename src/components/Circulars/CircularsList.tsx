@@ -7,7 +7,7 @@ import { Skeleton } from 'primereact/skeleton';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Tag } from 'primereact/tag';
-import { Tree } from 'primereact/tree';
+import { Tree, type TreeProps, type TreeEventNodeEvent } from 'primereact/tree';
 import { SelectButton } from 'primereact/selectbutton';
 import { TreeNode } from 'primereact/treenode';
 import { ContextMenu } from 'primereact/contextmenu';
@@ -18,7 +18,7 @@ import dmsLifecycleService from '../../services/DMSLifecycleService';
 import PageHeader from '../PageHeader';
 import './CircularsList.scss';
 import { setError } from '../../store/slices/appSlice';
-import AddEditCircular from './AddEditCircular/AddEditCircular';
+import AddEditCircular, { type CircularFormData } from './AddEditCircular/AddEditCircular';
 import { Dialog } from 'primereact/dialog';
 import CircularsLogDetails from './CircularsLogDetails';
 import { formatDate } from '../utils/formatDate';
@@ -102,6 +102,18 @@ interface CircularsListProps {
     focusId?: string | null;
 }
 
+type TreeSelectionEvent = Parameters<NonNullable<TreeProps['onSelectionChange']>>[0];
+
+/** api/circular/GetCIRDetails: what a download needs. */
+interface CircularFileDto {
+    blobContents?: unknown;
+    ciR_Number?: string;
+    fileName?: string;
+    description?: string;
+    fileType?: string;
+    originalFileType?: string;
+}
+
 interface TreeNodeData extends TreeNode {
     data: Circular;
 }
@@ -114,7 +126,7 @@ const formatDisplayDate = (value: string | Date | null | undefined): string => {
 
 const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focusId }) => {
     const dispatch = useDispatch();
-    const [categoryOptions, setCategoryOptions] = useState<{ label: string; value: string }[]>([]);
+    const [categoryOptions, setCategoryOptions] = useState<{ label: string; value: number }[]>([]); // value: ciR_CategoryID
     const [mode, setMode] = useState<string>('');
     const [headerTitle, setHeaderTitle] = useState('');
     const [circulars, setCirculars] = useState<Circular[]>([]);
@@ -129,7 +141,7 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
     const [sortOrder, setSortOrder] = useState('newest');
     const [filterCategory, setFilterCategory] = useState(-1);
     const [nodes, setNodes] = useState<TreeNodeData[]>([]);
-    const [selectedNodeKey, setSelectedNodeKey] = useState<any>(null);
+    const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
     const [selectedAction, setSelectedAction] = useState<string>('Add');
     const [expandedKeys, setExpandedKeys] = useState<{ [key: string]: boolean }>({});
     const [viewMode, setViewMode] = useState('list');
@@ -170,9 +182,9 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
     useEffect(() => {
         localStorage.setItem('lastDashboardTab', 'circulars');
 
-        dmsLifecycleService.getApiCall(`circular/GetCategories?isToIncludeAll=true&circularType=${calledMode}`)
+        dmsLifecycleService.getApiCall<{ category: string; ciR_CategoryID: number }[] | null>(`circular/GetCategories?isToIncludeAll=true&circularType=${calledMode}`)
             .then(data => {
-                const options = data.map((item: any ) => ({
+                const options = (data || []).map((item) => ({
                     label: item.category ,
                     value: item.ciR_CategoryID ,
                 }));
@@ -265,25 +277,24 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
                 if (firstNode && firstNode.key) {
                     const firstKey = String(firstNode.key);
                     setExpandedKeys({ [firstKey]: true });
-                    setSelectedNodeKey(data[0].key);
+                    setSelectedNodeKey(String(data[0].key));
                 }
             }
-        } catch (err: any) {
-            setError(err.message || 'Error fetching data');
+        } catch (err: unknown) {
+            dispatch(setError(errorMessage(err, 'The circulars could not be loaded.')));
         } finally {
             setLoading(false);
         }
     }
 
-    function getFirstNodeKey(nodes: TreeNodeData[]) {
-        if (!nodes || nodes.length === 0) return null;
-        const node: any = nodes[0];
-        return node;
+    function getFirstNodeKey(list: TreeNodeData[]): TreeNodeData | null {
+        return list && list.length > 0 ? list[0] : null;
     }
     
-    const onSelectionChange = (e: any) => {
-        setSelectedNodeKey(e.value);
-        const node = findNodeByKey(nodes, e.value as string);
+    const onSelectionChange = (e: TreeSelectionEvent) => {
+        const key = typeof e.value === 'string' ? e.value : null; // single selection: the key itself
+        setSelectedNodeKey(key);
+        const node = key == null ? null : findNodeByKey(nodes, key);
         if (node) {
             if (node.data.isCategory) {
                 setSelectedCircular(null);
@@ -293,12 +304,12 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
         }
     }
 
-    const onTreeContextMenu = (event: any) => {
+    const onTreeContextMenu = (event: TreeEventNodeEvent) => {
         event.originalEvent.preventDefault();
-        const node = event.node;
-        setSelectedNodeKey(node.key);
+        const node = event.node as TreeNodeData;
+        setSelectedNodeKey(node.key == null ? null : String(node.key));
         if (node && !node.data.isCategory) {
-            setSelectedCircular(node.data);
+            setSelectedCircular(node.data as Circular);
             cm.current?.show(event.originalEvent);
         }
         else {
@@ -430,7 +441,7 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
         const circular = circulars.find(c => c.ciR_MasterID === id);
         setDownloadingId(id);
         try {
-            const data: any = await dmsLifecycleService.getApiCall(`circular/GetCIRDetails/${id}`);
+            const data = await dmsLifecycleService.getApiCall<CircularFileDto | null>(`circular/GetCIRDetails/${id}`);
             const bytes = attachmentBytes(data?.blobContents);
             if (!bytes || bytes.length === 0) {
                 notify.info('This circular has no attachment.');
@@ -440,8 +451,8 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
             const fileName: string = data?.fileName || data?.description || `${number}.${(data?.fileType || 'pdf').replace(/^\./, '')}`;
             const ext = (fileName.split('.').pop() || '').toLowerCase();
             const mimeType = ATTACHMENT_TYPES[ext]
-                || (String(data?.originalFileType || '').includes('/') ? data.originalFileType : undefined)
-                || (String(data?.fileType || '').includes('/') ? data.fileType : undefined);
+                || (String(data?.originalFileType || '').includes('/') ? data?.originalFileType : undefined)
+                || (String(data?.fileType || '').includes('/') ? data?.fileType : undefined);
             saveFile(bytes, fileName, mimeType);
         } catch (err) {
             notify.error(errorMessage(err), 'Could not download the attachment');
@@ -685,16 +696,16 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
         setIsAddDialogVisible(true);
     };
     
-    const updateCIR = async (data: any, options?: { release?: boolean }) => {
+    const updateCIR = async (data: CircularFormData, options?: { release?: boolean }) => {
         try {
             setIsAddDialogVisible(false);
 
             const typeWord = mode === 'Alerts' ? 'alert' : 'circular';
             const released = () => notify.success(`Saved and released. The vessels get the ${typeWord} with the next sync.`);
 
-            let response;
+            let response: unknown;
             if (selectedAction === 'Add') {
-                response = await dmsLifecycleService.postApiCall('Circular/AddCircular', data);
+                response = await dmsLifecycleService.postApiCall<unknown>('Circular/AddCircular', data);
             }
             else if (options?.release) {
                 // Save and release in one call (PUT Circular/ReleaseCircular, same body as EditCircular).
@@ -715,7 +726,7 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
 
             // AddCircular returns the new circular's ID; EditCircular keeps the same one.
             const savedId: number | null = selectedAction === 'Add'
-                ? (typeof response === 'number' ? response : Number(response?.ciR_MasterID) || null)
+                ? (typeof response === 'number' ? response : Number((response as { ciR_MasterID?: number } | null)?.ciR_MasterID) || null)
                 : data.ciR_MasterID;
             // A new circular is saved first, then released (POST Circular/{id}/Release).
             if (selectedAction === 'Add' && options?.release && savedId) {
@@ -735,14 +746,14 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
             } else {
                 await LoadTreeNodeData();
                 setSelectedCircular((current) => current?.ciR_MasterID === data.ciR_MasterID
-                    ? (list.find((c) => c.ciR_MasterID === data.ciR_MasterID) ?? { ...current, ...data })
+                    ? (list.find((c) => c.ciR_MasterID === data.ciR_MasterID) ?? current)
                     : current);
             }
                       
-        } catch (err: any) {
+        } catch (err: unknown) {
             // Show the failure: before, a rejected save looked like it had worked.
             notify.error(errorMessage(err), selectedAction === 'Add' ? `Could not add the ${mode === 'Alerts' ? 'alert' : 'circular'}` : 'Could not save the changes');
-            dispatch(setError(err.message || 'Error saving circular'));
+            dispatch(setError(errorMessage(err, 'Error saving circular')));
         }
     }
 

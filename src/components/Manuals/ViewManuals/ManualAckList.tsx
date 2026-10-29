@@ -23,13 +23,14 @@ export interface ackDetails {
     vesselID: string;
 }
 
-const ManualAckList: React.FC<ackProps> = ({dm_ManualID, closeForm}) => {
+// closeForm: the dialog around this list closes itself (its X), nothing to close from here.
+const ManualAckList: React.FC<ackProps> = ({ dm_ManualID }) => {
     const [ackManualData, setAckManualData] = useState<ackDetails[]>([]);
 
     useEffect(() => {
-        dmsLifecycleService.getApiCall(`Manuals/GetManualUserAckList/${dm_ManualID}`)
-                .then((data: any) => {
-                    setAckManualData(data);
+        dmsLifecycleService.getApiCall<ackDetails[] | null>(`Manuals/GetManualUserAckList/${dm_ManualID}`)
+                .then((data) => {
+                    setAckManualData(data || []);
                 })
                 .catch(() => {
                     setAckManualData([]);

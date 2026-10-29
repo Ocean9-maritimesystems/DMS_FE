@@ -41,7 +41,28 @@ const STATUS_OPTIONS = [
     { label: 'Archived', value: 'Archived' }
 ];
 
-const createDocumentPayload = (data: any) => ({
+/** What the form gives to make the api/OtherDocument/AddOtherDocument body (missing values get defaults). */
+interface DocumentPayloadInput {
+    vesselID?: number;
+    vslID?: number;
+    otherDocument_TypeID?: number;
+    documentNumber?: string;
+    title: string;
+    documentTitle?: string;
+    status?: string;
+    reference?: string;
+    comments?: string;
+    uploadedOn?: string;
+    uploadedBy?: string;
+    description?: string;
+    fileName?: string;
+    fileType?: string;
+    originalFileType?: string;
+    blobSize?: number;
+    blobContents?: string | null;
+}
+
+const createDocumentPayload = (data: DocumentPayloadInput) => ({
     otherDocumentMasterID: 0,
     vesselID: data.vesselID ?? data.vslID ?? 0,
     vslID: data.vslID ?? data.vesselID ?? 0,
@@ -178,7 +199,7 @@ const AddEditOtherDocument: React.FC<AddEditOtherDocumentProps> = ({
 
         setIsSubmitting(true);
         try {
-            let blobContents = null;
+            let blobContents: string | null = null;
             if (newDocumentForm.file) {
                 const fileReader = new FileReader();
                 blobContents = await new Promise<string>((resolve, reject) => {

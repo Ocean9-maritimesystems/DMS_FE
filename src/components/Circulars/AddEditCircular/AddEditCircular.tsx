@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { InputText } from 'primereact/inputtext';
-import { Dropdown } from 'primereact/dropdown';
+import { Dropdown, type DropdownChangeEvent } from 'primereact/dropdown';
 import { MultiSelect } from 'primereact/multiselect';
 import { Button } from 'primereact/button';
 import { Calendar } from 'primereact/calendar';
@@ -24,7 +24,7 @@ interface AddEditCircularProps {
     selectedCIR_MasterID: number;
 }
 
-interface CircularFormData {
+export interface CircularFormData {
     ciR_MasterID: number;
     ciR_BlobID: number;
     circularType: string;
@@ -45,7 +45,8 @@ interface CircularFormData {
     fileName?: string;
     fileType?: string;
     originalFileType?: string;
-    blobSize?: string;
+    /** Text in the form; sent to the API as a number. */
+    blobSize?: string | number;
     blobContents?: Uint8Array | string;
     calledMode?: string;
     vesselIdList?: number[];
@@ -57,18 +58,66 @@ interface AllowedUserOption {
     department?: string;
 }
 
-const toAllowedUserOptions = (value: any): AllowedUserOption[] => {
+/** api/circular/GetCIRDetails: the circular as stored (some lists come under older names too). */
+interface CircularDetailsDto {
+    ciR_MasterID?: number;
+    ciR_BlobID?: number;
+    circularType?: string;
+    ciR_CategoryID?: number;
+    ciR_Number?: string;
+    allowedUserToAck?: string;
+    allowedUserToAckList?: unknown;
+    allowedUsersToAck?: unknown;
+    requireAcknowledgement?: boolean;
+    vesselIdList?: unknown;
+    vesselIDList?: unknown;
+    title?: string;
+    status?: CircularFormData['status'];
+    priority?: string | number;
+    dateIssued?: string | null;
+    releasedDate?: string | null;
+    remarks?: string;
+    createdBy?: string;
+    description?: string;
+    fileName?: string;
+    fileType?: string;
+    originalFileType?: string;
+    blobSize?: string | number;
+    blobContents?: string;
+    [other: string]: unknown;
+}
+
+/** api/circular/GetNextCIRNumbersByCategory */
+interface NextCircularNumberDto {
+    cirNumber?: string;
+    allowedUserToAck?: string;
+    allowedUserToAckList?: unknown;
+    allowedUsersToAck?: unknown;
+}
+
+/** api/circular/GetCategories */
+interface CircularCategoryDto {
+    category: string;
+    ciR_CategoryID: number;
+}
+
+/** A value from the API that may be an object: its fields (empty when it is not one). */
+const fieldsOf = (value: unknown): Record<string, unknown> =>
+    value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+
+const toAllowedUserOptions = (value: unknown): AllowedUserOption[] => {
     const values = Array.isArray(value)
         ? value
         : typeof value === 'string'
             ? value.split(',').map(item => item.trim()).filter(Boolean)
             : [];
 
-    return values.map(item => {
-        if (typeof item === 'string') {
-            return { label: item, value: item };
+    return (values as unknown[]).map(entry => {
+        if (typeof entry === 'string') {
+            return { label: entry, value: entry };
         }
 
+        const item = fieldsOf(entry);
         const optionValue = String(item.value ?? item.id ?? item.userRank ?? item.userName ?? item.name ?? '');
         return {
             label: String(item.label ?? item.userRank ?? item.userName ?? item.name ?? optionValue),
@@ -77,13 +126,14 @@ const toAllowedUserOptions = (value: any): AllowedUserOption[] => {
     }).filter(option => option.value);
 };
 
-const toVesselRankOptions = (ranks: any): AllowedUserOption[] => {
+const toVesselRankOptions = (ranks: unknown): AllowedUserOption[] => {
     if (!Array.isArray(ranks)) return [];
 
-    return ranks
-        .map((rank): AllowedUserOption | null => {
-            const userRank = String(rank?.userRank ?? rank?.UserRank ?? '').trim();
-            const department = String(rank?.userDeptDisplay ?? rank?.UserDeptDisplay ?? '').trim();
+    return (ranks as unknown[])
+        .map((entry): AllowedUserOption | null => {
+            const rank = fieldsOf(entry);
+            const userRank = String(rank.userRank ?? rank.UserRank ?? '').trim();
+            const department = String(rank.userDeptDisplay ?? rank.UserDeptDisplay ?? '').trim();
             return userRank
                 ? { label: userRank, value: userRank, department }
                 : null;
@@ -91,22 +141,25 @@ const toVesselRankOptions = (ranks: any): AllowedUserOption[] => {
         .filter((option): option is AllowedUserOption => option !== null);
 };
 
-const toAllowedUserValues = (value: any): string[] =>
+const toAllowedUserValues = (value: unknown): string[] =>
     toAllowedUserOptions(value).map(option => option.value);
 
-const toVesselIds = (value: any): number[] => {
+const toVesselIds = (value: unknown): number[] => {
     if (!Array.isArray(value)) return [];
 
-    return value
+    return (value as unknown[])
         .map(item => {
             if (typeof item === 'number') return item;
-            return Number(item?.vesselID ?? item?.vesselId ?? item?.id ?? item);
+            const v = fieldsOf(item);
+            return Number(v.vesselID ?? v.vesselId ?? v.id ?? item);
         })
         .filter(vesselId => Number.isFinite(vesselId) && vesselId > 0);
 };
 
-const getReferenceValue = (data: any): string =>
-    String(data?.reference ?? data?.Reference ?? data?.circularReference ?? data?.cirReference ?? '');
+const getReferenceValue = (value: unknown): string => {
+    const data = fieldsOf(value);
+    return String(data.reference ?? data.Reference ?? data.circularReference ?? data.cirReference ?? '');
+};
 
 const decodeBlobContents = (contents: Uint8Array | string): Uint8Array | null => {
     if (contents instanceof Uint8Array) return contents;
@@ -277,7 +330,7 @@ const VesselPicker: React.FC<VesselPickerProps> = ({ vessels, selectedIds, onCha
 
 const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit, onCancel, circularType, selectedAction, selectedCIR_MasterID }) => {
     const [formData, setFormData] = useState<CircularFormData>(initialData || defaultData);
-    const [categoryOptions, setCategoryOptions] = useState<{ label: string; value: string }[]>([]);
+    const [categoryOptions, setCategoryOptions] = useState<{ label: string; value: number }[]>([]); // value: ciR_CategoryID
     const [allowedUserOptions, setAllowedUserOptions] = useState<AllowedUserOption[]>([]);
     const [selectedAllowedUsers, setSelectedAllowedUsers] = useState<string[]>(
         toAllowedUserValues(initialData?.allowedUserToAck)
@@ -316,9 +369,9 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
                         setAllowedUserOptions([]);
                     });
 
-                dmsLifecycleService.getApiCall(`circular/GetCategories?isToIncludeAll=false&circularType=${circularType}`)
+                dmsLifecycleService.getApiCall<CircularCategoryDto[] | null>(`circular/GetCategories?isToIncludeAll=false&circularType=${circularType}`)
                     .then(data => {
-                        const options = data.map((item: any) => ({
+                        const options = (data || []).map((item) => ({
                             label: item.category,
                             value: item.ciR_CategoryID,
                         }));
@@ -327,8 +380,8 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
                     .catch(() => setCategoryOptions([]));
 
                 if (selectedAction === 'Edit' && selectedCIR_MasterID > 0) {
-                    dmsLifecycleService.getApiCall(`circular/GetCIRDetails/${selectedCIR_MasterID}`)
-                        .then((data: any) => {
+                    dmsLifecycleService.getApiCall<CircularDetailsDto>(`circular/GetCIRDetails/${selectedCIR_MasterID}`)
+                        .then((data) => {
                             const allowedUsers = data.allowedUserToAckList ?? data.allowedUsersToAck ?? data.allowedUserToAck;
                             const allowedUserValues = toAllowedUserValues(allowedUsers);
                             const vesselIds = toVesselIds(data.vesselIdList ?? data.vesselIDList);
@@ -348,7 +401,7 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
                                 reference: getReferenceValue(data),
                                 title: data.title ?? '',
                                 status: data.status ?? 'Draft',
-                                priority: data.priority?.toString() ?? '3',
+                                priority: (data.priority?.toString() ?? '3') as CircularFormData['priority'],
                                 dateIssued: data.dateIssued ? new Date(data.dateIssued) : null,
                                 releasedDate: data.releasedDate ? new Date(data.releasedDate) : null,
                                 remarks: data.remarks ?? '',
@@ -417,19 +470,21 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
         }
     }, []);
 
-    const handleInputChange = (e: any, name: string) => {
-        const val = (e.target && e.target.value !== undefined) ? e.target.value : e.value;
+    /** Text boxes give event.target.value; the date picker gives event.value. */
+    const handleInputChange = (e: { target?: unknown; value?: unknown }, name: keyof CircularFormData) => {
+        const target = e.target as { value?: unknown } | null | undefined;
+        const val = target && target.value !== undefined ? target.value : e.value;
         setFormData({ ...formData, [name]: val } as CircularFormData);
     };
 
-    const handleCategoryChange = (e: any) => {
+    const handleCategoryChange = (e: DropdownChangeEvent) => {
         const categoryID = e.value;
         setFormData({ ...formData, ciR_CategoryID: categoryID });
         
         // Fetch circular number based on selected category
         if (categoryID && selectedAction !== 'Edit') {
-            dmsLifecycleService.getApiCall(`circular/GetNextCIRNumbersByCategory?categoryID=${categoryID}&cir_MasterID=${formData.ciR_MasterID}`)
-                .then((data: any) => {
+            dmsLifecycleService.getApiCall<NextCircularNumberDto>(`circular/GetNextCIRNumbersByCategory?categoryID=${categoryID}&cir_MasterID=${formData.ciR_MasterID}`)
+                .then((data) => {
                     setFormData(prev => ({ 
                         ...prev, 
                         ciR_Number: data.cirNumber || '',
@@ -569,7 +624,7 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
 
         // Send values the API can always read: text never null, numbers never empty text.
         const ext = fileExtension(formData.fileName || '');
-        const dataToSubmit: any = {
+        const dataToSubmit: CircularFormData = {
             ...formData,
             ciR_BlobID: Number(formData.ciR_BlobID ?? -1),
             ciR_CategoryID: Number(formData.ciR_CategoryID ?? -1),
