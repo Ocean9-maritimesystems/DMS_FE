@@ -104,6 +104,10 @@ interface CircularsListProps {
 
 type TreeSelectionEvent = Parameters<NonNullable<TreeProps['onSelectionChange']>>[0];
 
+/** A tree key exactly as the API sent it: the tree compares the selected key with node.key using ===. */
+type NodeKey = string | number;
+const rawKey = (value: unknown): NodeKey | null => (typeof value === 'string' || typeof value === 'number' ? value : null);
+
 /** api/circular/GetCIRDetails: what a download needs. */
 interface CircularFileDto {
     blobContents?: unknown;
@@ -141,7 +145,7 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
     const [sortOrder, setSortOrder] = useState('newest');
     const [filterCategory, setFilterCategory] = useState(-1);
     const [nodes, setNodes] = useState<TreeNodeData[]>([]);
-    const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
+    const [selectedNodeKey, setSelectedNodeKey] = useState<NodeKey | null>(null);
     const [selectedAction, setSelectedAction] = useState<string>('Add');
     const [expandedKeys, setExpandedKeys] = useState<{ [key: string]: boolean }>({});
     const [viewMode, setViewMode] = useState('list');
@@ -277,7 +281,7 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
                 if (firstNode && firstNode.key) {
                     const firstKey = String(firstNode.key);
                     setExpandedKeys({ [firstKey]: true });
-                    setSelectedNodeKey(String(data[0].key));
+                    setSelectedNodeKey(data[0].key ?? null);
                 }
             }
         } catch (err: unknown) {
@@ -292,7 +296,7 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
     }
     
     const onSelectionChange = (e: TreeSelectionEvent) => {
-        const key = typeof e.value === 'string' ? e.value : null; // single selection: the key itself
+        const key = rawKey(e.value); // single selection: the key itself, kept as it is
         setSelectedNodeKey(key);
         const node = key == null ? null : findNodeByKey(nodes, key);
         if (node) {
@@ -307,7 +311,7 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
     const onTreeContextMenu = (event: TreeEventNodeEvent) => {
         event.originalEvent.preventDefault();
         const node = event.node as TreeNodeData;
-        setSelectedNodeKey(node.key == null ? null : String(node.key));
+        setSelectedNodeKey(node.key ?? null);
         if (node && !node.data.isCategory) {
             setSelectedCircular(node.data as Circular);
             cm.current?.show(event.originalEvent);
@@ -589,10 +593,10 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
         }
         setSelectedCircular(circular);
         // Same item in the tree view: select it and open its category.
-        const path: string[] = [];
-        const walk = (list: TreeNodeData[], trail: string[]): boolean => {
+        const path: NodeKey[] = [];
+        const walk = (list: TreeNodeData[], trail: NodeKey[]): boolean => {
             for (const node of list) {
-                const here = [...trail, String(node.key)];
+                const here = [...trail, node.key as NodeKey];
                 if (!node.data?.isCategory && node.data?.ciR_MasterID === circular.ciR_MasterID) { path.push(...here); return true; }
                 if (node.children && walk(node.children as TreeNodeData[], here)) return true;
             }
@@ -600,16 +604,16 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
         };
         if (walk(nodes, [])) {
             setSelectedNodeKey(path[path.length - 1]);
-            setExpandedKeys((prev) => ({ ...prev, ...Object.fromEntries(path.slice(0, -1).map((k) => [k, true])) }));
+            setExpandedKeys((prev) => ({ ...prev, ...Object.fromEntries(path.slice(0, -1).map((k) => [String(k), true])) }));
         }
         if (nodes.length > 0) focusApplied.current = focusKey; // the tree may still be loading: try again when it arrives
         window.setTimeout(() => document.querySelector(`[data-circular-id="${circular.ciR_MasterID}"]`)?.scrollIntoView({ block: 'center' }), 50);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [focusId, loading, circulars, nodes]);
 
-    const findNodeByKey = (nodes: TreeNodeData[], key: string): TreeNodeData | null => {
+    const findNodeByKey = (nodes: TreeNodeData[], key: NodeKey): TreeNodeData | null => {
         for (const node of nodes) {
-            if (node.key === key) {
+            if (String(node.key) === String(key)) {
                 return node;
             }
             if (node.children) {
@@ -696,14 +700,15 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
         setIsAddDialogVisible(true);
     };
     
-    const updateCIR = async (data: CircularFormData, options?: { release?: boolean }) => {
+    /**
+     * Saves the form. False when the save failed: the form stays open with what was typed and the reason is shown.
+     * Once saved, the form closes; anything after that (release, reloading the list) reports its own failure.
+     */
+    const updateCIR = async (data: CircularFormData, options?: { release?: boolean }): Promise<boolean> => {
+        let response: unknown;
+        const typeWord = mode === 'Alerts' ? 'alert' : 'circular';
+        const released = () => notify.success(`Saved and released. The vessels get the ${typeWord} with the next sync.`);
         try {
-            setIsAddDialogVisible(false);
-
-            const typeWord = mode === 'Alerts' ? 'alert' : 'circular';
-            const released = () => notify.success(`Saved and released. The vessels get the ${typeWord} with the next sync.`);
-
-            let response: unknown;
             if (selectedAction === 'Add') {
                 response = await dmsLifecycleService.postApiCall<unknown>('Circular/AddCircular', data);
             }
@@ -721,8 +726,15 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
             else {
                 response = await dmsLifecycleService.putApiCall('Circular/EditCircular', data);
             }
+        } catch (err: unknown) {
+            // Not saved: shown, and the form stays open so nothing typed is lost.
+            notify.error(errorMessage(err, 'The server did not save it. Try again.'),
+                selectedAction === 'Add' ? `Could not add the ${typeWord}` : 'Could not save the changes');
+            return false;
+        }
 
-            setIsAddDialogVisible(false);
+        setIsAddDialogVisible(false);
+        try {
 
             // AddCircular returns the new circular's ID; EditCircular keeps the same one.
             const savedId: number | null = selectedAction === 'Add'
@@ -751,10 +763,10 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
             }
                       
         } catch (err: unknown) {
-            // Show the failure: before, a rejected save looked like it had worked.
-            notify.error(errorMessage(err), selectedAction === 'Add' ? `Could not add the ${mode === 'Alerts' ? 'alert' : 'circular'}` : 'Could not save the changes');
-            dispatch(setError(errorMessage(err, 'Error saving circular')));
+            // Saved, but the list could not be reloaded: shown; the saved circular is there after a refresh.
+            notify.error(errorMessage(err), `The ${typeWord} was saved, but the list could not be reloaded`);
         }
+        return true;
     }
 
     return (
@@ -857,7 +869,7 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focus
                                 value={filteredNodes}
                                 emptyMessage={`No ${mode.toLowerCase()} found`}
                                 selectionMode="single"
-                                selectionKeys={selectedNodeKey}
+                                selectionKeys={selectedNodeKey as string | null}
                                 onSelectionChange={onSelectionChange}
                                 expandedKeys={treeExpandedKeys}
                                 onToggle={(e) => {

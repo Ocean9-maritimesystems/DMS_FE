@@ -16,8 +16,11 @@ import './AddEditCircular.scss';
 
 interface AddEditCircularProps {
     initialData?: CircularFormData;
-    /** release: also release the circular to the vessels after saving it ("Save and release"). */
-    onSubmit: (data: CircularFormData, options?: { release?: boolean }) => void;
+    /**
+     * release: also release the circular to the vessels after saving it ("Save and release").
+     * Resolves false when the save failed: the form stays open with what was typed.
+     */
+    onSubmit: (data: CircularFormData, options?: { release?: boolean }) => void | Promise<boolean | void>;
     onCancel: () => void;
     circularType: string;
     selectedAction: string;
@@ -346,6 +349,7 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
     const [fileError, setFileError] = useState('');
     const [dragOver, setDragOver] = useState(false);
     const [submitted, setSubmitted] = useState(false);
+    const [saving, setSaving] = useState(false); // a save is on its way: no second one
     // A new circular gets a temporary record when the form opens. If the form closes without saving
     // (Cancel, the X, or leaving the page) that record is removed, so no empty drafts are left behind.
     const tempMasterIdRef = useRef(-1);
@@ -618,7 +622,8 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
         setConfirmRelease(true);
     };
 
-    const submitForm = (release: boolean) => {
+    const submitForm = async (release: boolean) => {
+        if (saving) return;
         setSubmitted(true);
         if (missing.length > 0) return;
 
@@ -653,8 +658,16 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
             dataToSubmit.blobContents = window.btoa(binary);
         }
 
+        // Kept when the form closes: the temporary record is now the circular. A failed save (false) leaves it
+        // temporary again, so Cancel still removes it.
         savedRef.current = true;
-        onSubmit(dataToSubmit, { release });
+        setSaving(true);
+        try {
+            const ok = await onSubmit(dataToSubmit, { release });
+            if (ok === false) savedRef.current = false;
+        } finally {
+            setSaving(false);
+        }
     };
 
     // The temporary record is removed when the form closes (see the effect above).
@@ -871,9 +884,9 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
                 <div className="cir-form-buttons">
                     <Button type="button" label="Cancel" onClick={handleCancel} className="p-button-text" />
                     <Button type="submit" label={isDraft ? 'Save as draft' : `Save ${typeLabel}`} icon="pi pi-check"
-                        className={isDraft ? 'p-button-outlined' : undefined} />
+                        className={isDraft ? 'p-button-outlined' : undefined} loading={saving} disabled={saving} />
                     {isDraft && (
-                        <Button type="button" label="Save and release" icon="pi pi-send" onClick={askRelease}
+                        <Button type="button" label="Save and release" icon="pi pi-send" onClick={askRelease} disabled={saving}
                             title={`Save, then send the ${typeLabel} to the vessels`} />
                     )}
                 </div>

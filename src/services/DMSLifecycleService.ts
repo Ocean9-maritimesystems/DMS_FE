@@ -90,7 +90,9 @@ export const errorMessage = (error: unknown, fallback = 'Something went wrong.')
             .slice(0, 5);
         if (details.length) return details.join('\n');
     }
-    return data?.MetaData?.ErrorMessage || data?.metaData?.errorMessage || data?.detail || data?.title || data?.message || data?.error || fallback;
+    // The API's error handler sends { MetaData: { error_message: "..." } }.
+    return data?.MetaData?.error_message || data?.metaData?.error_message
+        || data?.MetaData?.ErrorMessage || data?.metaData?.errorMessage || data?.detail || data?.title || data?.message || data?.error || fallback;
 };
 
 export default dmsLifecycleService;
