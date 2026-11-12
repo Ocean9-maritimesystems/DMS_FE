@@ -7,9 +7,28 @@ import { Checkbox } from 'primereact/checkbox';
 import JoditEditor from 'jodit-react';
 import dmsLifecycleService from '../../../services/DMSLifecycleService';
 import ApprovalFlow from './ApprovalFlow';
+import { escapeHtml, sanitizeHtml } from '../../utils/sanitize';
 import './AddEditManual.scss';
 
 GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+
+/** api/Manuals/GetManualDetailsByVersionId */
+interface ManualDetailsDto {
+    dM_ManualID?: number;
+    dM_ManualVersionID?: number;
+    statusString?: string;
+    dM_CategoryID?: string;
+    manualCode?: string;
+    manualName?: string;
+    textContents?: string;
+    isMainTitle?: number;
+    isAcknowledgementRequired?: number;
+    canExport?: number;
+    isApprovalRequired?: number;
+    approval_FlowID?: number;
+    comments?: string;
+    createdBy?: string;
+}
 
 type ManualFormProps = {
     initialData?: ManualFormData;
@@ -64,8 +83,7 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
     const [form, setForm] = useState<ManualFormData>(initialData || defaultData);
     const [categoryOptions, setCategoryOptions] = useState<{ label: string; value: string }[]>([]);
     const [approvalFlowOptions, setApprovalFlowOptions] = useState<{ label: string; value: number }[]>([]);
-    const menu = useRef<any>(null);
-    const editorRef = useRef<any>(null);
+    const menu = useRef<ContextMenu>(null);
 
     const config = {
         readonly: false,
@@ -94,9 +112,9 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
     ];
 
     useEffect(() => {
-        dmsLifecycleService.getApiCall('DMS/GetManualCategory')
+        dmsLifecycleService.getApiCall<{ categoryName: string; dM_CategoryID: string }[] | null>('Manuals/GetManualCategory')
             .then(data => {
-                const options = data.map((cat: any) => ({
+                const options = (data || []).map((cat) => ({
                     label: cat.categoryName,
                     value: cat.dM_CategoryID
                 }));
@@ -104,9 +122,9 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
             })
             .catch(() => setCategoryOptions([]));
 
-        dmsLifecycleService.getApiCall('DMS/GetApprovalFlowList')
+        dmsLifecycleService.getApiCall<{ flowDesc: string; flowID: number }[] | null>('Manuals/GetApprovalFlowList')
             .then(data => {
-                const options = data.map((flow: any) => ({
+                const options = (data || []).map((flow) => ({
                     label: flow.flowDesc,
                     value: flow.flowID
                 }));
@@ -116,10 +134,8 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
 
 
         if (selectedAction === 'Edit' && selectedManualID > 0) {
-            dmsLifecycleService.getApiCall(`DMS/GetManualDetailsByVersionId/${selectedManualVersionID}`)
-                .then((data: any) => {
-                    console.log('Fetched manual data:', data);
-
+            dmsLifecycleService.getApiCall<ManualDetailsDto>(`Manuals/GetManualDetailsByVersionId/${selectedManualVersionID}`)
+                .then((data) => {
                     setForm({
                         DM_ManualID: data.dM_ManualID ?? selectedManualID ?? -1,
                         DM_ManualVersionID: data.dM_ManualVersionID ?? -1,
@@ -127,7 +143,7 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
                         DM_CategoryID: data.dM_CategoryID ?? '',
                         ManualCode: data.manualCode ?? '',
                         ManualName: data.manualName ?? '',
-                        TextContents: data.textContents ?? '',
+                        TextContents: sanitizeHtml(data.textContents),
                         IsMainTitle: data.isMainTitle ?? 0,
                         IsAcknowledgementRequired: data.isAcknowledgementRequired ?? 0,
                         CanExport: data.canExport ?? 0,
@@ -197,9 +213,10 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
                 const page = await pdf.getPage(1);
                 const content = await page.getTextContent();
                 const text = content.items
-                    .map((item: any) => ('str' in item ? item.str : ''))
+                    .map((item) => ('str' in item ? item.str : ''))
                     .join(' ');
-                setForm(prev => ({ ...prev, TextContents: text ?? '' }))
+                // Text from the PDF goes into the editor as text, not as HTML.
+                setForm(prev => ({ ...prev, TextContents: `<p>${escapeHtml(text ?? '')}</p>` }))
                 }
             };
             reader.readAsArrayBuffer(file);
@@ -241,13 +258,13 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
                                 <Checkbox
                                     className="dropdown-compact"
                                     checked={form.IsMainTitle === 1}
-                                    onChange={e => setForm(prev => ({ ...prev, IsMainTitle: !!e.checked ? 1 : 0 }))}
+                                    onChange={e => setForm(prev => ({ ...prev, IsMainTitle: e.checked ? 1 : 0 }))}
                                 />
                                 <label style={{ width: '120px', textAlign: 'left', marginLeft: '5px' }}>Main Title</label>
                                 <Checkbox
                                     className="dropdown-compact"
                                     checked={form.CanExport === 1}
-                                    onChange={e => setForm(prev => ({ ...prev, CanExport: !!e.checked ? 1 : 0 }))}
+                                    onChange={e => setForm(prev => ({ ...prev, CanExport: e.checked ? 1 : 0 }))}
                                 />
                                 <label style={{ width: '150px', textAlign: 'left', marginLeft: '5px' }}>Allow Export</label>
                             </div>
@@ -268,7 +285,7 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
                                 <Checkbox
                                     className="dropdown-compact"
                                     checked={form.IsAcknowledgementRequired === 1}
-                                    onChange={e => setForm(prev => ({ ...prev, IsAcknowledgementRequired: !!e.checked ? 1 : 0 }))}
+                                    onChange={e => setForm(prev => ({ ...prev, IsAcknowledgementRequired: e.checked ? 1 : 0 }))}
                                 />
                                 <label style={{ width: '250px', textAlign: 'left', marginLeft: '5px' }}>Acknowledgement Required</label>
                             </div>
@@ -319,16 +336,15 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
                             <div className="manual-form-group">
                                 <label style={{ width: '110px', flexShrink: 0 }}>Context</label>
                                 <ContextMenu model={contextMenuItems} ref={menu} style={{ minWidth: '150px' }} />
-                                <a onClick={e => menu.current.show(e)} style={{ marginLeft: '5px', fontSize: '16px' }}>Import</a>
-                                <input type="file" accept="application/pdf" onChange={handleFileChange} />;
+                                <a onClick={e => menu.current?.show(e)} style={{ marginLeft: '5px', fontSize: '16px' }}>Import</a>
+                                <input type="file" accept="application/pdf" onChange={handleFileChange} />
                             </div>
                             <div className="col-sm-9" style={{ width: '100%', height: '355px' }}>
                                 <JoditEditor
-                                    ref={editorRef}
                                     config={config}
                                     value={form.TextContents}
                                     tabIndex={1}
-                                    onBlur={newContent => setForm(prev => ({ ...prev, TextContents: newContent }))}
+                                    onBlur={newContent => setForm(prev => ({ ...prev, TextContents: sanitizeHtml(newContent) }))}
                                 />
                             </div>
                         </div>

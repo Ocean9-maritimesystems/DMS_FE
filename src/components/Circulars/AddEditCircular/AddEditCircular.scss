@@ -876,6 +876,17 @@
     /* Vessels */
     .cir-vessels { display: flex; flex-direction: column; gap: 10px; }
 
+    .cir-vessels.disabled {
+        opacity: 0.58;
+
+        .cir-check { cursor: not-allowed; }
+
+        button:disabled,
+        .p-inputtext:disabled {
+            cursor: not-allowed;
+        }
+    }
+
     .cir-vessels-search {
         position: relative;
 

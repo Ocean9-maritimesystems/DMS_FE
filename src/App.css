@@ -251,6 +251,83 @@ html,
   background: var(--bg-primary);
 }
 
+/* Confirmation dialogs (confirmDialog with className "dms-confirm-dialog") */
+.p-confirm-dialog.dms-confirm-dialog {
+  width: 26rem;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+}
+
+.dms-confirm-dialog .p-dialog-header {
+  padding: 1rem 1.25rem 0.5rem;
+  border-bottom: none !important;
+  background: var(--bg-primary);
+}
+
+.dms-confirm-dialog .p-dialog-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.dms-confirm-dialog .p-dialog-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 0.5rem 1.25rem 1.25rem;
+}
+
+.dms-confirm-dialog .p-confirm-dialog-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  color: #d97706;
+  background: color-mix(in srgb, #d97706 14%, transparent);
+}
+
+.dms-confirm-dialog .p-confirm-dialog-message {
+  margin: 0 !important;
+  padding-top: 0.4rem;
+  line-height: 1.5;
+  color: var(--text-secondary, var(--text-primary));
+}
+
+.dms-confirm-dialog .p-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.dms-confirm-dialog .p-dialog-footer .p-button {
+  margin: 0 !important;
+  min-width: 5.5rem;
+  padding: 0.5rem 1rem;
+  justify-content: center;
+}
+
+/* Keep the focus ring inside the dialog so overflow:hidden doesn't clip it */
+.dms-confirm-dialog .p-dialog-footer .p-button:focus-visible {
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+.dms-confirm-dialog .dms-confirm-danger.p-button {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}
+
+.dms-confirm-dialog .dms-confirm-danger.p-button:enabled:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
 .p-button,
 button {
   transition: background-color 0.2s ease, border-color 0.2s ease,
@@ -354,4 +431,14 @@ input:focus-visible,
   top: 50% !important;
   margin-top: 0 !important;
   transform: translateY(-50%);
+}
+
+/* Shown while a page's code is loading (first visit to that page). */
+.page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 50vh;
+  color: var(--text-secondary);
 }

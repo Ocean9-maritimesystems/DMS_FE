@@ -36,7 +36,7 @@ const ManualVersionHistory: React.FC<ManualDetailsProps> = () => {
         setLoading(true);
         setError(null);
         dmsLifecycleService
-            .getApiCall(`DMS/GetManualVersionHistory?dm_ManualID=${manualId}`)
+            .getApiCall(`Manuals/GetManualVersionHistory?dm_ManualID=${manualId}`)
             .then((data: ManualVersionHistoryData[]) => setRows(Array.isArray(data) ? data : []))
             .catch((err) => {
                 setRows([]);

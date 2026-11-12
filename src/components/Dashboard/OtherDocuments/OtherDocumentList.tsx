@@ -5,7 +5,10 @@ import { Skeleton } from 'primereact/skeleton';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
 import { Dropdown } from 'primereact/dropdown';
-import dmsLifecycleService from '../../../services/DMSLifecycleService';
+import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
+import dmsLifecycleService, { errorMessage, getFile } from '../../../services/DMSLifecycleService';
+import notify from '../../../services/notify';
+import { openOrSaveBlob, saveBlob } from '../../utils/files';
 import AddEditOtherDocument, { OtherDocumentTypeOption } from '../../OtherDocument/AddEditOtherDocument';
 import './OtherDocumentList.scss';
 
@@ -16,6 +19,14 @@ interface OtherDocument {
     uploadBy: string;
     uploadDate: string;
     vesselID?: number;
+}
+
+/** GET api/OtherDocument/Documents/{id}/Files */
+interface DocumentFile {
+    id: number;
+    fileName: string;
+    fileType?: string | null;
+    blobSize: number;
 }
 
 interface OtherDocumentListProps {
@@ -36,12 +47,14 @@ const OtherDocumentList: React.FC<OtherDocumentListProps> = ({ vesselId, vesselN
     useEffect(() => {
         const fetchDocumentTypes = async () => {
             try {
-                const types = await dmsLifecycleService.apiCall('OtherDocument/GetTypes', 'get', {
+                // The API has sent these lists in both camelCase and PascalCase.
+                type TypeRow = { documentType?: string; DocumentType?: string; otherDocument_TypeID?: number; OtherDocument_TypeID?: number };
+                const types = await dmsLifecycleService.apiCall<TypeRow[] | null>('OtherDocument/GetTypes', 'get', {
                     vesselId: vesselId ?? 0,
                     vslID: vesselId ?? 0,
                     vesselID: vesselId ?? 0
                 });
-                const mappedTypes = (Array.isArray(types) ? types : []).map((item: any) => ({
+                const mappedTypes = (Array.isArray(types) ? types : []).map((item) => ({
                     label: item.documentType || item.DocumentType || 'Unknown',
                     value: item.documentType || item.DocumentType || '',
                     docTypeId: Number(item.otherDocument_TypeID ?? item.OtherDocument_TypeID ?? 0)
@@ -61,14 +74,22 @@ const OtherDocumentList: React.FC<OtherDocumentListProps> = ({ vesselId, vesselN
             setLoading(true);
 
             try {
-                const response = await dmsLifecycleService.apiCall('OtherDocument/GetDocuments', 'get', {
+                type DocumentRow = {
+                    otherDocumentMasterID?: number; OtherDocumentMasterID?: number;
+                    documentTitle?: string; DocumentTitle?: string;
+                    documentType?: string; DocumentType?: string;
+                    uploadedBy?: string; UploadedBy?: string;
+                    uploadedOn?: string; UploadedOn?: string;
+                    vesselID?: number; VesselID?: number; vslID?: number; VslID?: number;
+                };
+                const response = await dmsLifecycleService.apiCall<DocumentRow[] | { data?: DocumentRow[] } | null>('OtherDocument/GetDocuments', 'get', {
                     vesselId: vesselId ?? 0,
                     documentType: selectedType || undefined
                 });
 
-                const rows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
+                const rows: DocumentRow[] = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
 
-                const mappedRows = rows.map((item: any) => ({
+                const mappedRows = rows.map((item) => ({
                     documentID: item.otherDocumentMasterID ?? item.OtherDocumentMasterID ?? 0,
                     title: item.documentTitle ?? item.DocumentTitle ?? 'Untitled document',
                     documentType: item.documentType ?? item.DocumentType ?? 'Unknown',
@@ -88,8 +109,74 @@ const OtherDocumentList: React.FC<OtherDocumentListProps> = ({ vesselId, vesselN
         fetchDocuments();
     }, [vesselId, selectedType, reloadKey]);
 
-    const handleViewDocument = (documentId: number) => {
-        console.log('Viewing document:', documentId);
+    const [busyId, setBusyId] = useState<number | null>(null);
+
+    /** The document's files, or null (with a message) when it has none. */
+    const loadFiles = async (doc: OtherDocument): Promise<DocumentFile[] | null> => {
+        const files = await dmsLifecycleService.getApiCall<DocumentFile[]>(`OtherDocument/Documents/${doc.documentID}/Files`);
+        if (!files || files.length === 0) {
+            notify.info(`"${doc.title}" has no files.`);
+            return null;
+        }
+        return files;
+    };
+
+    const fetchFile = async (file: DocumentFile) => {
+        const { blob, fileName } = await getFile(`OtherDocument/Files/${file.id}`);
+        return { blob, name: fileName || file.fileName || `file-${file.id}` };
+    };
+
+    /** Opens the first file (PDFs and images in a new tab; other types are downloaded). */
+    const handleViewDocument = async (doc: OtherDocument) => {
+        setBusyId(doc.documentID);
+        try {
+            const files = await loadFiles(doc);
+            if (!files) return;
+            const { blob, name } = await fetchFile(files[0]);
+            openOrSaveBlob(blob, name);
+        } catch (err) {
+            notify.error(errorMessage(err, 'The file is not available.'), 'Could not open the document');
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    /** Downloads every file of the document. */
+    const handleDownloadDocument = async (doc: OtherDocument) => {
+        setBusyId(doc.documentID);
+        try {
+            const files = await loadFiles(doc);
+            if (!files) return;
+            for (const file of files) {
+                const { blob, name } = await fetchFile(file);
+                saveBlob(blob, name);
+            }
+        } catch (err) {
+            notify.error(errorMessage(err, 'The file is not available.'), 'Could not download the document');
+        } finally {
+            setBusyId(null);
+        }
+    };
+
+    /** Deletes a document added at the office (the API refuses documents that came from a vessel). */
+    const handleDeleteDocument = (doc: OtherDocument) => {
+        confirmDialog({
+            header: 'Delete document',
+            message: `Delete "${doc.title}"? This cannot be undone.`,
+            icon: 'pi pi-exclamation-triangle',
+            acceptLabel: 'Delete',
+            rejectLabel: 'Cancel',
+            acceptClassName: 'p-button-danger',
+            accept: async () => {
+                try {
+                    await dmsLifecycleService.deleteApiCall(`OtherDocument/Documents/${doc.documentID}`);
+                    notify.success(`"${doc.title}" was deleted.`);
+                    setReloadKey((k) => k + 1);
+                } catch (err) {
+                    notify.error(errorMessage(err), 'Could not delete the document');
+                }
+            },
+        });
     };
 
     const handleNewDocument = () => {
@@ -112,7 +199,9 @@ const OtherDocumentList: React.FC<OtherDocumentListProps> = ({ vesselId, vesselN
                     className="p-button-rounded p-button-text p-button-info" 
                     tooltip="View Document"
                     tooltipOptions={{ position: 'top' }}
-                    onClick={() => handleViewDocument(rowData.documentID)}
+                    onClick={() => handleViewDocument(rowData)}
+                    disabled={busyId === rowData.documentID}
+                    aria-label={`View ${rowData.title}`}
                     style={{ width: '3rem', height: '3rem', fontSize: '1.5rem' }}
                 />
                 <Button 
@@ -120,7 +209,9 @@ const OtherDocumentList: React.FC<OtherDocumentListProps> = ({ vesselId, vesselN
                     className="p-button-rounded p-button-text p-button-success" 
                     tooltip="Download"
                     tooltipOptions={{ position: 'top' }}
-                    onClick={() => console.log('Download:', rowData.documentID)}
+                    onClick={() => handleDownloadDocument(rowData)}
+                    disabled={busyId === rowData.documentID}
+                    aria-label={`Download ${rowData.title}`}
                     style={{ width: '3rem', height: '3rem', fontSize: '1.5rem' }}
                 />
                 <Button 
@@ -128,8 +219,10 @@ const OtherDocumentList: React.FC<OtherDocumentListProps> = ({ vesselId, vesselN
                     className="p-button-rounded p-button-text p-button-danger" 
                     tooltip="Delete"
                     tooltipOptions={{ position: 'top' }}
-                    onClick={() => console.log('Delete:', rowData.documentID)}
-                    style={{ width: '3rem', height: '3rem', fontSize: '2.5rem' }}
+                    onClick={() => handleDeleteDocument(rowData)}
+                    disabled={busyId === rowData.documentID}
+                    aria-label={`Delete ${rowData.title}`}
+                    style={{ width: '3rem', height: '3rem', fontSize: '1.5rem' }}
                 />
             </div>
         );
@@ -150,6 +243,7 @@ const OtherDocumentList: React.FC<OtherDocumentListProps> = ({ vesselId, vesselN
 
     return (
         <div className="document-list-container">
+            <ConfirmDialog />
             <div className="document-list-header">
                 <div className="header-title">
                     <h2><i className="pi pi-file-o"></i> {vesselName} Documents</h2>

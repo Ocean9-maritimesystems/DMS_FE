@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { TabView, TabPanel } from 'primereact/tabview';
 import PageHeader from '../PageHeader';
 import DashboardManual from './Manuals/DashboardManual';
 import DashboardCirculars from './Circulars/DashboardCirculars';
-import DashboardOtherDocuments from './OtherDocuments/DashboardOtherDocument';
-import DashboardVesselSyncStatus from './VesselSyncStatus/DashboardVesselSyncStatus';
 import './Dashboard.scss';
 
 export interface DashboardProps {
@@ -15,15 +13,21 @@ export interface DashboardProps {
 const tabMapping: Record<string, number> = {
     manuals: 0,
     circulars: 1,
-    otherdocuments: 2,
-    vesselsyncstatus: 3,
 };
 
-const tabNames = ['manuals', 'circulars', 'otherdocuments', 'vesselsyncstatus'];
+const tabNames = ['manuals', 'circulars'];
+
+/** Tabs that became pages of their own (header links); old links and saved tabs go there. */
+const movedTabs: Record<string, string> = {
+    pendingacks: '/pending?tab=vessels',
+    otherdocuments: '/otherdocuments',
+    vesselsyncstatus: '/vessel-sync',
+};
 
 const Dashboard: React.FC<DashboardProps> = ({ userId }) => {
     const [activeIndex, setActiveIndex] = useState(0);
     const location = useLocation();
+    const navigate = useNavigate();
 
     useEffect(() => {
         const requestedTab =
@@ -31,8 +35,17 @@ const Dashboard: React.FC<DashboardProps> = ({ userId }) => {
             localStorage.getItem('lastDashboardTab') ||
             'manuals';
 
+        const moved = movedTabs[requestedTab];
+        if (moved) {
+            localStorage.setItem('lastDashboardTab', 'manuals');
+            if (location.state?.activeTab === requestedTab) {
+                navigate(moved, { replace: true });
+                return;
+            }
+        }
+
         setActiveIndex(tabMapping[requestedTab] ?? 0);
-    }, [location.state]);
+    }, [location.state, navigate]);
 
     const handleTabChange = (event: { index: number }) => {
         const nextIndex = event.index;
@@ -73,28 +86,6 @@ const Dashboard: React.FC<DashboardProps> = ({ userId }) => {
                     }
                 >
                     <DashboardCirculars userId={userId} />
-                </TabPanel>
-
-                <TabPanel
-                    header={
-                        <div className="tab-header">
-                            <i className="pi pi-folder-open" />
-                            <span>Other Documents</span>
-                        </div>
-                    }
-                >
-                    <DashboardOtherDocuments userId={userId} />
-                </TabPanel>
-
-                <TabPanel
-                    header={
-                        <div className="tab-header">
-                            <i className="pi pi-sync" />
-                            <span>Vessel Sync Status</span>
-                        </div>
-                    }
-                >
-                    <DashboardVesselSyncStatus />
                 </TabPanel>
             </TabView>
         </main>

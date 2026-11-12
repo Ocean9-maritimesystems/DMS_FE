@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { DataView } from 'primereact/dataview';
 import { InputText } from 'primereact/inputtext';
 import { Dropdown } from 'primereact/dropdown';
@@ -7,22 +7,63 @@ import { Skeleton } from 'primereact/skeleton';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Tag } from 'primereact/tag';
-import { Tree } from 'primereact/tree';
+import { Tree, type TreeProps, type TreeEventNodeEvent } from 'primereact/tree';
 import { SelectButton } from 'primereact/selectbutton';
 import { TreeNode } from 'primereact/treenode';
 import { ContextMenu } from 'primereact/contextmenu';
 import { MenuItem } from 'primereact/menuitem';
+import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { useDispatch } from 'react-redux';
 import dmsLifecycleService from '../../services/DMSLifecycleService';
 import PageHeader from '../PageHeader';
 import './CircularsList.scss';
 import { setError } from '../../store/slices/appSlice';
-import AddEditCircular from './AddEditCircular/AddEditCircular';
+import AddEditCircular, { type CircularFormData } from './AddEditCircular/AddEditCircular';
 import { Dialog } from 'primereact/dialog';
 import CircularsLogDetails from './CircularsLogDetails';
 import { formatDate } from '../utils/formatDate';
 import notify from '../../services/notify';
 import { errorMessage } from '../../services/DMSLifecycleService';
+import CircularExtrasPanel from './CircularExtrasPanel';
+import featureApi from '../../services/featureApi';
+
+/* ---------- Downloading a circular's attachment ---------- */
+
+const ATTACHMENT_TYPES: Record<string, string> = {
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+
+/** The file bytes from GetCIRDetails (base64 text, possibly a data: URL). */
+const attachmentBytes = (contents: unknown): Uint8Array | null => {
+    if (contents instanceof Uint8Array) return contents;
+    if (Array.isArray(contents)) return new Uint8Array(contents as number[]);
+    if (typeof contents !== 'string' || !contents.trim()) return null;
+    try {
+        const base64 = contents.includes(',') ? contents.slice(contents.indexOf(',') + 1) : contents;
+        const text = window.atob(base64);
+        const bytes = new Uint8Array(text.length);
+        for (let i = 0; i < text.length; i += 1) bytes[i] = text.charCodeAt(i);
+        return bytes;
+    } catch {
+        return null;
+    }
+};
+
+/** Saves the bytes as a file in the browser's downloads. */
+const saveFile = (bytes: Uint8Array, fileName: string, mimeType?: string) => {
+    const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: mimeType || 'application/octet-stream' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+};
 
 interface Circular {
     ciR_CategoryID: number;
@@ -57,6 +98,24 @@ interface AckList {
 interface CircularsListProps {
     userId: string;
     calledMode?: string;
+    /** Circular to select when the list has loaded (?id= in the address). */
+    focusId?: string | null;
+}
+
+type TreeSelectionEvent = Parameters<NonNullable<TreeProps['onSelectionChange']>>[0];
+
+/** A tree key exactly as the API sent it: the tree compares the selected key with node.key using ===. */
+type NodeKey = string | number;
+const rawKey = (value: unknown): NodeKey | null => (typeof value === 'string' || typeof value === 'number' ? value : null);
+
+/** api/circular/GetCIRDetails: what a download needs. */
+interface CircularFileDto {
+    blobContents?: unknown;
+    ciR_Number?: string;
+    fileName?: string;
+    description?: string;
+    fileType?: string;
+    originalFileType?: string;
 }
 
 interface TreeNodeData extends TreeNode {
@@ -69,9 +128,9 @@ const formatDisplayDate = (value: string | Date | null | undefined): string => {
     return formatDate(value);
 };
 
-const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => {
+const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode, focusId }) => {
     const dispatch = useDispatch();
-    const [categoryOptions, setCategoryOptions] = useState<{ label: string; value: string }[]>([]);
+    const [categoryOptions, setCategoryOptions] = useState<{ label: string; value: number }[]>([]); // value: ciR_CategoryID
     const [mode, setMode] = useState<string>('');
     const [headerTitle, setHeaderTitle] = useState('');
     const [circulars, setCirculars] = useState<Circular[]>([]);
@@ -86,19 +145,26 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
     const [sortOrder, setSortOrder] = useState('newest');
     const [filterCategory, setFilterCategory] = useState(-1);
     const [nodes, setNodes] = useState<TreeNodeData[]>([]);
-    const [selectedNodeKey, setSelectedNodeKey] = useState<any>(null);
+    const [selectedNodeKey, setSelectedNodeKey] = useState<NodeKey | null>(null);
     const [selectedAction, setSelectedAction] = useState<string>('Add');
     const [expandedKeys, setExpandedKeys] = useState<{ [key: string]: boolean }>({});
     const [viewMode, setViewMode] = useState('list');
     const [isAddDialogVisible, setIsAddDialogVisible] = useState(false);
     const [showCircularsLogDialog, setShowCircularsLogDialog] = useState<boolean>(false);
     const cm = React.useRef<ContextMenu>(null);
+    const hasAttachment = (circular: Circular | null | undefined) => Number(circular?.attachmentCount ?? 0) > 0;
+    /** Only a draft can be edited: a released (Active / Archived) or cancelled circular is fixed. */
+    const canEditCircular = (circular: Circular | null | undefined) => String(circular?.statusString ?? '').toLowerCase() === 'draft';
 
     const menuItems: MenuItem[] = [
-        { label: 'Edit', icon: 'pi pi-fw pi-pencil', command: () => handleEdit(selectedCircular?.ciR_MasterID || 0) },
-        { label: 'Download', icon: 'pi pi-fw pi-download', command: () => handleDownload(selectedCircular?.ciR_MasterID || 0) },
+        { label: 'Edit', icon: 'pi pi-fw pi-pencil', disabled: !canEditCircular(selectedCircular), command: () => handleEdit(selectedCircular?.ciR_MasterID || 0) },
+        { label: 'Download attachment', icon: 'pi pi-fw pi-download', disabled: !hasAttachment(selectedCircular), command: () => handleDownload(selectedCircular?.ciR_MasterID || 0) },
         { label: 'Log', icon: 'pi pi-fw pi-history', command: () => handleLog(selectedCircular?.ciR_MasterID || 0) },
-        { label: 'Add to Favorites', icon: 'pi pi-fw pi-star', command: () => handleFavourite(selectedCircular?.ciR_MasterID || 0) }
+        {
+            label: selectedCircular?.isFavourite ? 'Remove from Favorites' : 'Add to Favorites',
+            icon: selectedCircular?.isFavourite ? 'pi pi-fw pi-star-fill' : 'pi pi-fw pi-star',
+            command: () => handleFavourite(selectedCircular?.ciR_MasterID || 0)
+        }
     ];
 
     const sortOptions = [
@@ -115,13 +181,14 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
 
     /** "Circular" / "Alert" for buttons and messages (mode is plural). */
     const itemLabel = mode === 'Circulars' ? 'Circular' : mode === 'Alerts' ? 'Alert' : 'Item';
+    const isFavoritesMode = (calledMode ?? '').toLowerCase().includes('favorite');
     
     useEffect(() => {
         localStorage.setItem('lastDashboardTab', 'circulars');
 
-        dmsLifecycleService.getApiCall(`circular/GetCategories?isToIncludeAll=true&circularType=${calledMode}`)
+        dmsLifecycleService.getApiCall<{ category: string; ciR_CategoryID: number }[] | null>(`circular/GetCategories?isToIncludeAll=true&circularType=${calledMode}`)
             .then(data => {
-                const options = data.map((item: any ) => ({
+                const options = (data || []).map((item) => ({
                     label: item.category ,
                     value: item.ciR_CategoryID ,
                 }));
@@ -175,20 +242,30 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
         fetchCirculars();
         LoadTreeNodeData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [userId, calledMode]);
+    }, [userId, calledMode, focusId]);
 
-    const fetchCirculars = async () => {
+    const fetchCirculars = async (): Promise<Circular[]> => {
+        let loaded: Circular[] = [];
         setLoading(true);
         try {
             // All categories are loaded once; the category dropdown filters in the browser.
             const data: Circular[] = await dmsLifecycleService.getApiCall(`Circular/GetCIRMasterList?userId=${userId}&categoryId=-1&circularType=${calledMode}`);
             setCirculars(data || []);
+            loaded = data || [];
+            // Opened from the inbox, a search or a manual (?id=): select that circular.
+            const focused = focusId ? (data || []).find((c) => String(c.ciR_MasterID) === String(focusId)) : undefined;
+            if (focused) setSelectedCircular(focused);
+            // Keep the open circular in step with the list (e.g. Draft -> Active after Release).
+            else setSelectedCircular((current) => (current
+                ? (data || []).find((c) => c.ciR_MasterID === current.ciR_MasterID) ?? current
+                : current));
         } catch (err) {
             setCirculars([]);
             notify.error(errorMessage(err), `Could not load ${mode ? mode.toLowerCase() : 'circulars'}`);
         } finally {
             setLoading(false);
         }
+        return loaded;
     };
     
     const LoadTreeNodeData = async () => {
@@ -204,25 +281,24 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
                 if (firstNode && firstNode.key) {
                     const firstKey = String(firstNode.key);
                     setExpandedKeys({ [firstKey]: true });
-                    setSelectedNodeKey(data[0].key);
+                    setSelectedNodeKey(data[0].key ?? null);
                 }
             }
-        } catch (err: any) {
-            setError(err.message || 'Error fetching data');
+        } catch (err: unknown) {
+            dispatch(setError(errorMessage(err, 'The circulars could not be loaded.')));
         } finally {
             setLoading(false);
         }
     }
 
-    function getFirstNodeKey(nodes: TreeNodeData[]) {
-        if (!nodes || nodes.length === 0) return null;
-        let node: any = nodes[0];
-        return node;
+    function getFirstNodeKey(list: TreeNodeData[]): TreeNodeData | null {
+        return list && list.length > 0 ? list[0] : null;
     }
     
-    const onSelectionChange = (e: any) => {
-        setSelectedNodeKey(e.value);
-        const node = findNodeByKey(nodes, e.value as string);
+    const onSelectionChange = (e: TreeSelectionEvent) => {
+        const key = rawKey(e.value); // single selection: the key itself, kept as it is
+        setSelectedNodeKey(key);
+        const node = key == null ? null : findNodeByKey(nodes, key);
         if (node) {
             if (node.data.isCategory) {
                 setSelectedCircular(null);
@@ -232,12 +308,12 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
         }
     }
 
-    const onTreeContextMenu = (event: any) => {
+    const onTreeContextMenu = (event: TreeEventNodeEvent) => {
         event.originalEvent.preventDefault();
-        const node = event.node;
-        setSelectedNodeKey(node.key);
+        const node = event.node as TreeNodeData;
+        setSelectedNodeKey(node.key ?? null);
         if (node && !node.data.isCategory) {
-            setSelectedCircular(node.data);
+            setSelectedCircular(node.data as Circular);
             cm.current?.show(event.originalEvent);
         }
         else {
@@ -250,6 +326,31 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
         event.preventDefault();
         setSelectedCircular(circular);
         cm.current?.show(event);
+    };
+
+    const treeNodeTemplate = (node: TreeNode) => {
+        const circular = (node as TreeNodeData).data;
+
+        if (circular?.isCategory) {
+            return (
+                <span className="tree-category-label">
+                    <i className="pi pi-folder" aria-hidden="true" />
+                    <span>{node.label}</span>
+                    {!!node.children?.length && <span className="tree-category-count">{node.children.length}</span>}
+                </span>
+            );
+        }
+
+        if (circular) {
+            return (
+                <span className="tree-circular-label" title={`${circular.ciR_Number} - ${circular.title}`}>
+                    <span className="tree-circular-number">{circular.ciR_Number}</span>
+                    <span className="tree-circular-title">{circular.title}</span>
+                </span>
+            );
+        }
+
+        return <span>{node.label}</span>;
     };
     
     useEffect(() => {
@@ -306,6 +407,7 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
         switch (status) {
             case 'Active': return 'pi-check-circle';
             case 'Draft': return 'pi-file-edit';
+            case 'Cancelled': return 'pi-ban';
             case 'Archived': return 'pi-inbox';
             default: return 'pi-circle';
         }
@@ -325,15 +427,42 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
     };
 
     const handleEdit = (id: number) => {
-        console.log('Edit circular:', id);
         const circularToEdit = circulars.find(c => c.ciR_MasterID === id) || null;
+        if (!canEditCircular(circularToEdit)) {
+            notify.info('Only a draft can be edited. A released or cancelled circular cannot be changed.');
+            return;
+        }
         setSelectedCircular(circularToEdit);  
         setSelectedAction('Edit');
         setIsAddDialogVisible(true);
     };
 
-    const handleDownload = (id: number) => {
-        console.log('Download circular:', id);
+    const [downloadingId, setDownloadingId] = useState<number | null>(null);
+
+    /** Downloads the circular's attachment (the file saved with it). */
+    const handleDownload = async (id: number) => {
+        if (!id || downloadingId === id) return;
+        const circular = circulars.find(c => c.ciR_MasterID === id);
+        setDownloadingId(id);
+        try {
+            const data = await dmsLifecycleService.getApiCall<CircularFileDto | null>(`circular/GetCIRDetails/${id}`);
+            const bytes = attachmentBytes(data?.blobContents);
+            if (!bytes || bytes.length === 0) {
+                notify.info('This circular has no attachment.');
+                return;
+            }
+            const number = data?.ciR_Number || circular?.ciR_Number || `circular-${id}`;
+            const fileName: string = data?.fileName || data?.description || `${number}.${(data?.fileType || 'pdf').replace(/^\./, '')}`;
+            const ext = (fileName.split('.').pop() || '').toLowerCase();
+            const mimeType = ATTACHMENT_TYPES[ext]
+                || (String(data?.originalFileType || '').includes('/') ? data?.originalFileType : undefined)
+                || (String(data?.fileType || '').includes('/') ? data?.fileType : undefined);
+            saveFile(bytes, fileName, mimeType);
+        } catch (err) {
+            notify.error(errorMessage(err), 'Could not download the attachment');
+        } finally {
+            setDownloadingId(null);
+        }
     };
 
     const handleLog = (id: number) => {
@@ -407,6 +536,7 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
         return (
             <div
                 className={`circular-row priority-${priority}${isSelected ? ' selected' : ''}`}
+                data-circular-id={circular.ciR_MasterID}
                 onClick={() => setSelectedCircular(circular)}
                 onContextMenu={(e) => onListContextMenu(e, circular)}
                 onKeyDown={(e) => { if (e.key === 'Enter') setSelectedCircular(circular); }}
@@ -426,23 +556,64 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
                 <div className="row-title">{circular.title}</div>
                 <div className="row-bottom">
                     <span className="row-ref">{circular.reference || ''}</span>
-                    {circular.attachmentCount > 0 && (
-                        <span className="row-meta"><i className="pi pi-paperclip" />{circular.attachmentCount}</span>
-                    )}
+                    
                     <span className="row-actions" onClick={stop}>
-                        <Button icon="pi pi-pencil" className="p-button-text p-button-rounded p-button-sm" onClick={() => handleEdit(circular.ciR_MasterID)} tooltip="Edit" tooltipOptions={{ position: 'top' }} aria-label="Edit" />
-                        <Button icon="pi pi-download" className="p-button-text p-button-rounded p-button-sm" onClick={() => handleDownload(circular.ciR_MasterID)} tooltip="Download" tooltipOptions={{ position: 'top' }} aria-label="Download" />
+                        {/* A plain title on a wrapper: PrimeReact's tooltip on a disabled button breaks when the button changes. */}
+                        <span title={canEditCircular(circular) ? 'Edit' : 'Released or cancelled: cannot be edited'} className="row-action-wrap">
+                            <Button icon="pi pi-pencil" className="p-button-text p-button-rounded p-button-sm" onClick={() => handleEdit(circular.ciR_MasterID)}
+                                disabled={!canEditCircular(circular)} aria-label="Edit" />
+                        </span>
+                        <Button icon={downloadingId === circular.ciR_MasterID ? 'pi pi-spin pi-spinner' : 'pi pi-download'} className="p-button-text p-button-rounded p-button-sm" onClick={() => handleDownload(circular.ciR_MasterID)} disabled={!hasAttachment(circular) || downloadingId === circular.ciR_MasterID} tooltip={hasAttachment(circular) ? 'Download attachment' : 'No attachment'} tooltipOptions={{ position: 'top' }} aria-label={hasAttachment(circular) ? 'Download attachment' : 'No attachment'} />
                         <Button icon="pi pi-history" className="p-button-text p-button-rounded p-button-sm" onClick={() => handleLog(circular.ciR_MasterID)} tooltip="Activity log" tooltipOptions={{ position: 'top' }} aria-label="Activity log" />
-                        <Button icon={circular.isFavourite ? 'pi pi-star-fill' : 'pi pi-star'} className="p-button-text p-button-rounded p-button-sm" onClick={() => handleFavourite(circular.ciR_MasterID)} tooltip="Add to favourites" tooltipOptions={{ position: 'top' }} aria-label="Add to favourites" />
+                        <Button
+                            icon={circular.isFavourite ? 'pi pi-star-fill' : 'pi pi-star'}
+                            className={`p-button-text p-button-rounded p-button-sm circular-favourite-action${circular.isFavourite ? ' is-favourite' : ''}`}
+                            onClick={() => handleFavourite(circular.ciR_MasterID)}
+                            tooltip={circular.isFavourite ? (isFavoritesMode ? 'Remove from favourites' : 'Added to favourites') : 'Add to favourites'}
+                            tooltipOptions={{ position: 'top' }}
+                            aria-label={circular.isFavourite ? (isFavoritesMode ? 'Remove from favourites' : 'Added to favourites') : 'Add to favourites'}
+                        />
                     </span>
                 </div>
             </div>
         );
     };
 
-    const findNodeByKey = (nodes: TreeNodeData[], key: string): TreeNodeData | null => {
+    // Open the circular named in the address (?id=) once the list and the tree have loaded; once per address,
+    // so later changes to the list (favourites, edits) do not pull the selection back.
+    const focusApplied = useRef<string | null>(null);
+    useEffect(() => {
+        const focusKey = `${calledMode}|${focusId}`;
+        if (!focusId || loading || circulars.length === 0 || focusApplied.current === focusKey) return;
+        const circular = circulars.find((c) => String(c.ciR_MasterID) === focusId);
+        if (!circular) {
+            focusApplied.current = focusKey;
+            notify.warn(`That ${mode ? mode.toLowerCase().replace(/s$/, '') : 'circular'} is not in this list. It may have been cancelled, expired or deleted.`, 'Not found');
+            return;
+        }
+        setSelectedCircular(circular);
+        // Same item in the tree view: select it and open its category.
+        const path: NodeKey[] = [];
+        const walk = (list: TreeNodeData[], trail: NodeKey[]): boolean => {
+            for (const node of list) {
+                const here = [...trail, node.key as NodeKey];
+                if (!node.data?.isCategory && node.data?.ciR_MasterID === circular.ciR_MasterID) { path.push(...here); return true; }
+                if (node.children && walk(node.children as TreeNodeData[], here)) return true;
+            }
+            return false;
+        };
+        if (walk(nodes, [])) {
+            setSelectedNodeKey(path[path.length - 1]);
+            setExpandedKeys((prev) => ({ ...prev, ...Object.fromEntries(path.slice(0, -1).map((k) => [String(k), true])) }));
+        }
+        if (nodes.length > 0) focusApplied.current = focusKey; // the tree may still be loading: try again when it arrives
+        window.setTimeout(() => document.querySelector(`[data-circular-id="${circular.ciR_MasterID}"]`)?.scrollIntoView({ block: 'center' }), 50);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusId, loading, circulars, nodes]);
+
+    const findNodeByKey = (nodes: TreeNodeData[], key: NodeKey): TreeNodeData | null => {
         for (const node of nodes) {
-            if (node.key === key) {
+            if (String(node.key) === String(key)) {
                 return node;
             }
             if (node.children) {
@@ -456,13 +627,71 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
     };
 
 
+    const updateFavouriteState = (id: number, isFavourite: boolean) => {
+        setCirculars(previous => previous.map(circular =>
+            circular.ciR_MasterID === id ? { ...circular, isFavourite } : circular
+        ));
+        const updateTreeNodes = (treeNodes: TreeNodeData[]): TreeNodeData[] =>
+            treeNodes.map(node => ({
+                ...node,
+                data: node.data?.ciR_MasterID === id ? { ...node.data, isFavourite } : node.data,
+                children: node.children
+                    ? updateTreeNodes(node.children as TreeNodeData[])
+                    : node.children
+            }));
+        setNodes(previous => updateTreeNodes(previous));
+        setSelectedCircular(previous =>
+            previous?.ciR_MasterID === id ? { ...previous, isFavourite } : previous
+        );
+    };
+
     const handleFavourite = async (id: number) => {
         if (!id) return;
+        const circular = circulars.find(item => item.ciR_MasterID === id);
+        const isFavourite = circular?.isFavourite ?? selectedCircular?.isFavourite ?? false;
+        if (isFavourite) {
+            confirmDialog({
+                header: 'Remove from favourites?',
+                message: 'Are you sure you want to remove this circular from your favourites?',
+                icon: 'pi pi-exclamation-triangle',
+                acceptLabel: 'Remove',
+                rejectLabel: 'Cancel',
+                className: 'dms-confirm-dialog',
+                acceptClassName: 'dms-confirm-danger',
+                rejectClassName: 'p-button-text p-button-secondary',
+                defaultFocus: 'reject',
+                draggable: false,
+                accept: () => updateFavourite(id, false)
+            });
+            return;
+        }
+        await updateFavourite(id, true);
+    };
+
+    const updateFavourite = async (id: number, isFavourite: boolean) => {
+        const previousValue = circulars.find(item => item.ciR_MasterID === id)?.isFavourite
+            ?? selectedCircular?.isFavourite
+            ?? false;
+        updateFavouriteState(id, isFavourite);
         try {
-            await dmsLifecycleService.postApiCall(`Circular/AddToFavourite?cir_MasterID=${id}&circularType=${calledMode ?? ''}`);
-            notify.success('Added to your favourites.');
+            const action = isFavourite ? 'AddToFavourite' : 'RemoveFromFavourite';
+            await dmsLifecycleService.postApiCall(`Circular/${action}?cir_MasterID=${id}&circularType=${calledMode ?? ''}`);
+            notify.success(isFavourite ? 'Added to your favourites.' : 'Removed from your favourites.');
+            if (!isFavourite && isFavoritesMode) {
+                setCirculars(previous => previous.filter(circular => circular.ciR_MasterID !== id));
+                setSelectedCircular(previous => previous?.ciR_MasterID === id ? null : previous);
+                const removeFromTree = (treeNodes: TreeNodeData[]): TreeNodeData[] =>
+                    treeNodes.flatMap(node => {
+                        if (node.data?.ciR_MasterID === id) return [];
+                        const children = node.children ? removeFromTree(node.children as TreeNodeData[]) : undefined;
+                        if (node.data?.isCategory && children?.length === 0) return [];
+                        return [{ ...node, ...(children ? { children } : {}) }];
+                    });
+                setNodes(previous => removeFromTree(previous));
+            }
         } catch (err) {
-            notify.error(errorMessage(err), 'Could not add to favourites');
+            updateFavouriteState(id, previousValue);
+            notify.error(errorMessage(err), isFavourite ? 'Could not add to favourites' : 'Could not remove from favourites');
         }
     };
 
@@ -471,51 +700,100 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
         setIsAddDialogVisible(true);
     };
     
-    const updateCIR = async (data: any) => {
+    /**
+     * Saves the form. False when the save failed: the form stays open with what was typed and the reason is shown.
+     * Once saved, the form closes; anything after that (release, reloading the list) reports its own failure.
+     */
+    const updateCIR = async (data: CircularFormData, options?: { release?: boolean }): Promise<boolean> => {
+        let response: unknown;
+        const typeWord = mode === 'Alerts' ? 'alert' : 'circular';
+        const released = () => notify.success(`Saved and released. The vessels get the ${typeWord} with the next sync.`);
         try {
-            setIsAddDialogVisible(false);
-
-            var response;
             if (selectedAction === 'Add') {
-                response = await dmsLifecycleService.postApiCall('Circular/AddCircular', data); 
+                response = await dmsLifecycleService.postApiCall<unknown>('Circular/AddCircular', data);
+            }
+            else if (options?.release) {
+                // Save and release in one call (PUT Circular/ReleaseCircular, same body as EditCircular).
+                // When it is refused nothing is saved, so the changes are then kept as a draft.
+                try {
+                    response = await dmsLifecycleService.putApiCall('Circular/ReleaseCircular', data);
+                    released();
+                } catch (err) {
+                    response = await dmsLifecycleService.putApiCall('Circular/EditCircular', data);
+                    notify.error(errorMessage(err), 'Saved as a draft, but not released');
+                }
             }
             else {
                 response = await dmsLifecycleService.putApiCall('Circular/EditCircular', data);
             }
+        } catch (err: unknown) {
+            // Not saved: shown, and the form stays open so nothing typed is lost.
+            notify.error(errorMessage(err, 'The server did not save it. Try again.'),
+                selectedAction === 'Add' ? `Could not add the ${typeWord}` : 'Could not save the changes');
+            return false;
+        }
 
-            setIsAddDialogVisible(false);
-            await fetchCirculars();
+        setIsAddDialogVisible(false);
+        try {
+
+            // AddCircular returns the new circular's ID; EditCircular keeps the same one.
+            const savedId: number | null = selectedAction === 'Add'
+                ? (typeof response === 'number' ? response : Number((response as { ciR_MasterID?: number } | null)?.ciR_MasterID) || null)
+                : data.ciR_MasterID;
+            // A new circular is saved first, then released (POST Circular/{id}/Release).
+            if (selectedAction === 'Add' && options?.release && savedId) {
+                try {
+                    await featureApi.circular.release(savedId);
+                    released();
+                } catch (err) {
+                    notify.error(errorMessage(err), 'Saved as a draft, but not released');
+                }
+            }
+
+            const list = await fetchCirculars();
             if (selectedAction === 'Add') {
                 await LoadTreeNodeData();
-                // Select the new circular when the API returns it; otherwise keep nothing selected.
-                setSelectedCircular(response && response.ciR_MasterID ? response : null);
+                // Select the new circular in the refreshed list.
+                setSelectedCircular(list.find((c) => c.ciR_MasterID === savedId) ?? null);
             } else {
                 await LoadTreeNodeData();
                 setSelectedCircular((current) => current?.ciR_MasterID === data.ciR_MasterID
-                    ? { ...current, ...data }
+                    ? (list.find((c) => c.ciR_MasterID === data.ciR_MasterID) ?? current)
                     : current);
             }
                       
-        } catch (err: any) {
-            // Show the failure: before, a rejected save looked like it had worked.
-            notify.error(errorMessage(err), selectedAction === 'Add' ? `Could not add the ${mode === 'Alerts' ? 'alert' : 'circular'}` : 'Could not save the changes');
-            dispatch(setError(err.message || 'Error saving circular'));
+        } catch (err: unknown) {
+            // Saved, but the list could not be reloaded: shown; the saved circular is there after a refresh.
+            notify.error(errorMessage(err), `The ${typeWord} was saved, but the list could not be reloaded`);
         }
+        return true;
     }
 
     return (
         <div className='main-page-wrapper'>
+            <ConfirmDialog />
             <ContextMenu 
                 model={menuItems} 
                 ref={cm} 
+                className="circular-context-menu"
             />
             <PageHeader
                 title={headerTitle}
                 actions={<Button icon="pi pi-plus" label={`New ${itemLabel.toLowerCase()}`} onClick={handleNewCircular} className="header-primary-btn" />}
             />
             
-            <div className="circulars-split-container">
+            <div className={`circulars-split-container${isFavoritesMode ? ' circulars-favorites-mode' : ''}`}>
                 <div className="circulars-list-section">
+                    {isFavoritesMode && (
+                        <div className="circular-favorites-heading">
+                            <span className="circular-favorites-icon"><i className="pi pi-star-fill" aria-hidden="true" /></span>
+                            <div>
+                                <h2>My favourites</h2>
+                                <p>Your saved {mode.toLowerCase()} in one place. Use the star to remove an item.</p>
+                            </div>
+                            <span className="circular-favorites-count">{loading ? '—' : circulars.length}</span>
+                        </div>
+                    )}
                     {/* Toolbar: fixed two-row layout, so nothing moves when the view changes. */}
                     <div className="list-controls">
                         <div className="controls-row">
@@ -591,7 +869,7 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
                                 value={filteredNodes}
                                 emptyMessage={`No ${mode.toLowerCase()} found`}
                                 selectionMode="single"
-                                selectionKeys={selectedNodeKey}
+                                selectionKeys={selectedNodeKey as string | null}
                                 onSelectionChange={onSelectionChange}
                                 expandedKeys={treeExpandedKeys}
                                 onToggle={(e) => {
@@ -599,6 +877,7 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
                                     cm.current?.hide(e.originalEvent);
                                 }}
                                 className="custom-tree"
+                                nodeTemplate={treeNodeTemplate}
                                 onContextMenu={onTreeContextMenu}
                             />
                             ) : viewMode === 'grid' ? (
@@ -616,6 +895,31 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
                                             >
                                                 <div className="grid-item-header">
                                                     <h4>{circular.ciR_Number}</h4>
+                                                    <Button
+                                                        type="button"
+                                                        icon={downloadingId === circular.ciR_MasterID ? 'pi pi-spin pi-spinner' : 'pi pi-download'}
+                                                        className="p-button-text p-button-rounded p-button-sm circular-download-action"
+                                                        disabled={!hasAttachment(circular) || downloadingId === circular.ciR_MasterID}
+                                                        aria-label={hasAttachment(circular) ? 'Download attachment' : 'No attachment'}
+                                                        tooltip={hasAttachment(circular) ? 'Download attachment' : 'No attachment'}
+                                                        tooltipOptions={{ position: 'top' }}
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            handleDownload(circular.ciR_MasterID);
+                                                        }}
+                                                    />
+                                                    <Button
+                                                        type="button"
+                                                        icon={circular.isFavourite ? 'pi pi-star-fill' : 'pi pi-star'}
+                                                        className={`p-button-text p-button-rounded p-button-sm circular-favourite-action${circular.isFavourite ? ' is-favourite' : ''}`}
+                                                        aria-label={circular.isFavourite ? (isFavoritesMode ? 'Remove from favourites' : 'Added to favourites') : 'Add to favourites'}
+                                                        tooltip={circular.isFavourite ? (isFavoritesMode ? 'Remove from favourites' : 'Added to favourites') : 'Add to favourites'}
+                                                        tooltipOptions={{ position: 'top' }}
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            handleFavourite(circular.ciR_MasterID);
+                                                        }}
+                                                    />
                                                 </div>
                                                 <div className="grid-item-title" title={circular.title}>{circular.title}</div>
                                                 <div className="meta-left">
@@ -677,21 +981,17 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
                                         <div className="circular-meta">
                                             <span><i className="pi pi-folder" />{selectedCircular.category}</span>
                                             <span><i className="pi pi-calendar" />Issued {formatDisplayDate(selectedCircular.dateIssued)}</span>
-                                            <span><i className="pi pi-send" />Released {formatDisplayDate(selectedCircular.releasedDate)}</span>
+                                            <span className="circular-release-download">
+                                                <span><i className="pi pi-send" />Released {formatDisplayDate(selectedCircular.releasedDate)}</span>
+                                                <button type="button" className="cir-attachment-link" onClick={() => handleDownload(selectedCircular.ciR_MasterID)}
+                                                    disabled={!hasAttachment(selectedCircular) || downloadingId === selectedCircular.ciR_MasterID}
+                                                    title={hasAttachment(selectedCircular) ? 'Download the attachment' : 'No attachment'}>
+                                                    <i className={`pi ${downloadingId === selectedCircular.ciR_MasterID ? 'pi-spin pi-spinner' : 'pi-download'}`} />
+                                                    Download attachment
+                                                </button>
+                                            </span>
                                             {!!selectedCircular.cIRLevel && <span><i className="pi pi-sitemap" />Level {selectedCircular.cIRLevel}</span>}
-                                            {selectedCircular.attachmentCount > 0 && <span><i className="pi pi-paperclip" />{selectedCircular.attachmentCount} attachment{selectedCircular.attachmentCount > 1 ? 's' : ''}</span>}
                                         </div>
-                                    </div>
-                                    <div className="filter-group">
-                                        <label htmlFor="vessel-filter">Filter acknowledgements</label>
-                                        <Dropdown
-                                            id="vessel-filter"
-                                            value={vesselFilter}
-                                            options={vesselOptions}
-                                            onChange={(e) => setVesselFilter(e.value)}
-                                            placeholder="Select Vessel"
-                                            style={{ width: '250px' }}
-                                        />
                                     </div>
                                 </div>
                                 {selectedCircular.remarks && (
@@ -700,6 +1000,8 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
                                         <p>{selectedCircular.remarks}</p>
                                     </div>
                                 )}
+                                <CircularExtrasPanel circularId={selectedCircular.ciR_MasterID}
+                                    onChanged={() => { fetchCirculars(); LoadTreeNodeData(); }} />
                                 {/* Acknowledgement counts on one line */}
                                 <div className="circular-summary-line" aria-label="Acknowledgement counts">
                                     <span className="summary-chip ack">
@@ -711,7 +1013,20 @@ const CircularsList: React.FC<CircularsListProps> = ({ userId, calledMode }) => 
                                     <span className="summary-chip overdue">
                                         <i className="pi pi-exclamation-circle" /> Overdue <strong>{ackList.filter((item) => item.status === 'Overdue').length}</strong>
                                     </span>
+                                    <span className="summary-right">
                                     <span className="summary-total">{ackList.length} total</span>
+                                    {/* Vessel filter for the acknowledgement grid below */}
+                                    <Dropdown
+                                        inputId="vessel-filter"
+                                        value={vesselFilter}
+                                        options={vesselOptions}
+                                        onChange={(e) => setVesselFilter(e.value)}
+                                        placeholder="Select Vessel"
+                                        aria-label="Filter acknowledgements by vessel"
+                                        className="summary-vessel-filter"
+                                        filter={vesselOptions.length > 10}
+                                    />
+                                    </span>
                                 </div>
                             </div>
                     

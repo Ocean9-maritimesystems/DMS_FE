@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import dmsLifecycleService from '../../services/DMSLifecycleService';
+import { sanitizePrintableHtml } from './sanitize';
 
 export type ManualDetails = {
     categoryName: string;
@@ -16,7 +17,7 @@ export async function generateHTMLContent(manualText: string, dmManualVersionID:
     
     let manualData: ManualDetails;
     try {
-        manualData = await dmsLifecycleService.getApiCall(`DMS/GetManualDetailsByVersionId/${dmManualVersionID}`);
+        manualData = await dmsLifecycleService.getApiCall(`Manuals/GetManualDetailsByVersionId/${dmManualVersionID}`);
     } catch {
         manualData = {
             categoryName: '',
@@ -151,8 +152,9 @@ export async function downloadAsPDF(manualText: string, dmManualVersionID: numbe
     });
 
     // Create a temporary element to render the HTML
+    // The page is put into this document for jsPDF to lay out, so nothing in it may run code.
     const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = htmlContent;
+    tempDiv.innerHTML = sanitizePrintableHtml(htmlContent);
     document.body.appendChild(tempDiv);
 
     doc.html(tempDiv, {

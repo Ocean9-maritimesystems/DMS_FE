@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useRef} from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../../../store/store';
 import { ContextMenu } from 'primereact/contextmenu';
@@ -10,20 +10,31 @@ import { downloadAsWord } from '../../utils/DownloadManuals';
 import { downloadAsPDF } from '../../utils/DownloadManuals';
 import { useTheme } from '../../../contexts/ThemeContext';
 import JoditEditor from 'jodit-react';
+import { sanitizeHtml } from '../../utils/sanitize';
 import CompareVersion from '../CompareVersion/CompareVersion';
 import CompareVersionDetails from '../CompareVersion/CompareVersionDetails';
 import ManualDetails from '../ViewManuals/ManualDetails';
 import ApproveManual from '../ApproveManual/ApproveManual';
-import AddEditManual from '../AddEditManual/AddEditManual';
-import dmsLifecycleService from '../../../services/DMSLifecycleService';
+import AddEditManual, { type ManualFormData } from '../AddEditManual/AddEditManual';
+import type { ManualFormData as CompareFormData } from '../CompareVersion/CompareVersion';
+import dmsLifecycleService, { errorMessage } from '../../../services/DMSLifecycleService';
 import './ManualsContent.scss';
 import ViewCompareManualDetails from '../CompareVersion/ViewCompareManualDetails';
 import ManualVersionHistory from './ManualVersionHistory';
 import { formatDate } from '../../utils/formatDate';
+import { ManualRelatedCirculars } from '../../Circulars/CircularExtrasPanel';
 
 export interface ManualDetailsProps {
     userId: string;
     onRefreshTree?: () => void;
+}
+
+/** api/Manuals/ApproveManual and SendBackManual */
+interface ManualApprovalRequest {
+    dM_ManualID: string | number | undefined;
+    dM_ManualVersionID: number | undefined;
+    userID: string;
+    comments: string;
 }
 
 const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  => {
@@ -44,8 +55,8 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
     const [IsSingleFileDiff, setIsSingleFileDiff] = useState<boolean>(false);
     const [headerText, setHeaderText] = useState<string>('Manual Details');
     const [showConfirmPopup, setShowConfirmPopup] = useState(false);
-    const menu = useRef<any>(null);
-    const toast = useRef<any>(null);
+    const menu = useRef<ContextMenu>(null);
+    const toast = useRef<Toast>(null);
     const { theme } = useTheme(); 
    
      const getJoditConfig = () => ({
@@ -69,7 +80,7 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
         if(manualInfo.selectedManualNodeObj)
         {
             setManualID(manualInfo.selectedManualNodeObj.key ? Number(manualInfo.selectedManualNodeObj.key) : -1);
-            setHeaderText(manualInfo.selectedManualNodeObj ? manualInfo.selectedManualNodeObj.label : '');
+            setHeaderText(manualInfo.selectedManualNodeObj.label ?? '');
             setIsFavourite(manualInfo.selectedManualNodeObj.data.isFavourite ? manualInfo.selectedManualNodeObj.data.isFavourite === 1 ? true : false : false);
 
             setIsManualReleased(false);
@@ -79,21 +90,25 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
         }        
     }, [manualInfo.selectedManualNodeObj]);
     
-    useEffect(() => {
-        if (manualInfo.selectedManualNodeObj) {
-            fetchData();
-        }
-    }, [isChecked, manualInfo.selectedManualNodeObj]);
+    const manualKey = manualInfo.selectedManualNodeObj?.key;
+    const fetchData = useCallback(() => {
+        if (manualKey == null) return;
+        dmsLifecycleService.getApiCall<string>(`Manuals/GetManualContent?dm_ManualID=${manualKey}&IncludeSubManuals=${isChecked}`)
+            .then((manualResponse) => {
+                // Shown in the editor as HTML: anything that could run code is removed first.
+                setManualText(sanitizeHtml(manualResponse));
+            })
+            .catch(() => {
+                setManualText('<p><em>Could not load this manual. Please try again.</em></p>');
+            });
+    }, [manualKey, isChecked]);
 
-    const fetchData = async() => {
-          dmsLifecycleService.getApiCall(`DMS/GetManualContent?dm_ManualID=${manualInfo.selectedManualNodeObj.key}&IncludeSubManuals=${isChecked}`)
-                .then((manualResponse) => {
-                    setManualText(manualResponse);
-                })
-                .catch((err) => {
-                    setManualText('<p><em>Could not load this manual. Please try again.</em></p>');
-                });
-        };
+    // Reloaded when another manual is selected (or the same one after an edit: a new node object) or the
+    // "include sub manuals" box changes.
+    const selectedNode = manualInfo.selectedManualNodeObj;
+    useEffect(() => {
+        if (selectedNode) fetchData();
+    }, [fetchData, selectedNode]);
        
     const downloadAsWordHandler = () => {
         downloadAsWord(manualText, manualInfo.selectedManualNodeObj?.data?.dM_ManualVersionID);
@@ -108,52 +123,47 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
         { label: 'Word', icon: 'pi pi-file-word', command: downloadAsWordHandler }
     ];
 
-    const updateManuals = async (data: any) => {
+    const updateManuals = async (data: ManualFormData) => {
         try {
-            await dmsLifecycleService.postApiCall('DMS/EditManual', data);
+            await dmsLifecycleService.postApiCall('Manuals/EditManual', data);
 
            setVisibleAddEditDialog(false);
            fetchData();
            if (onRefreshTree) onRefreshTree(); 
-        } catch (err: any) {
-            dispatch(setError(err.message || 'Error adding manual'));
+        } catch (err: unknown) {
+            dispatch(setError(errorMessage(err, 'The manual could not be saved.')));
         }
     }
 
-    const ApproveManuals = async (data: any) => {
+    const ApproveManuals = async (data: ManualApprovalRequest) => {
         try {
-            await dmsLifecycleService.postApiCall('DMS/ApproveManual', data);
+            await dmsLifecycleService.postApiCall('Manuals/ApproveManual', data);
 
            setVisibleApproveManualDialog(false);
            fetchData();
            if (onRefreshTree) onRefreshTree(); 
-        } catch (err: any) {
-            dispatch(setError(err.message || 'Error approving manual'));
+        } catch (err: unknown) {
+            dispatch(setError(errorMessage(err, 'The manual could not be approved.')));
         }
     }
 
-    const SendBackManuals = async (data: any) => {
+    const SendBackManuals = async (data: ManualApprovalRequest) => {
         try {
-            await dmsLifecycleService.postApiCall('DMS/SendBackManual', data);
+            await dmsLifecycleService.postApiCall('Manuals/SendBackManual', data);
 
            setVisibleApproveManualDialog(false);
            fetchData();
            if (onRefreshTree) onRefreshTree(); 
-        } catch (err: any) {
-            dispatch(setError(err.message || 'Error approving manual'));
+        } catch (err: unknown) {
+            dispatch(setError(errorMessage(err, 'The manual could not be sent back.')));
         }
     }
 
-    const showCompareVersion = async (data: any) => {
-        try {
-            setDM_ManualVersionID_ToCompare(data.DM_ManualVersionID_ToCompare);
-            setIsSingleFileDiff(data.IsSingleVersion);
-            
-            setVisibleCompareVersionDialog(false);
-            setVisibleCompareVersionDetailsDialog(true);
-        } catch (err: any) {
-            dispatch(setError(err.message || 'Error updating vessel details'));
-        }
+    const showCompareVersion = (data: CompareFormData) => {
+        setDM_ManualVersionID_ToCompare(data.DM_ManualVersionID_ToCompare);
+        setIsSingleFileDiff(data.IsSingleVersion);
+        setVisibleCompareVersionDialog(false);
+        setVisibleCompareVersionDetailsDialog(true);
     }
 
     const checkConfirmation = () => {
@@ -169,7 +179,7 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
                         <i className="pi pi-exclamation-triangle" /> Confirmation
                     </div>
                     <div className="confirm-content">
-                        Are you sure you want to add this manual as favourite?
+                        Are you sure you want to {isFavourite ? 'remove this manual from' : 'add this manual to'} favourites?
                     </div>
                     <div className="confirm-actions">
                         <button 
@@ -196,31 +206,33 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
         );
     };
 
-    const accept = () => {
-        dmsLifecycleService.postApiCall(`DMS/AddToFavourite?dm_ManualID=${manualID}&userId=${userId}`)
-            .then(() => {
-                toast.current.show({
-                    severity: 'info',
-                    summary: 'Confirmed',
-                    detail: 'Manual added to favourites.',
-                    life: 3000,
-                    closable: true
-                });
-                if (onRefreshTree) onRefreshTree(); 
-            })
-            .catch(() => {
-                toast.current.show({
-                    severity: 'error',
-                    summary: 'Error',
-                    detail: 'Failed to add manual to favourites.',
-                    life: 3000,
-                    closable: true
-                });
+    const accept = async () => {
+        const removing = isFavourite;
+        const action = removing ? 'RemoveFromFavourite' : 'AddToFavourite';
+        try {
+            await dmsLifecycleService.postApiCall(`Manuals/${action}?dm_ManualID=${manualID}&userId=${userId}`);
+            setIsFavourite(!removing);
+            toast.current?.show({
+                severity: 'success',
+                summary: 'Confirmed',
+                detail: removing ? 'Manual removed from favourites.' : 'Manual added to favourites.',
+                life: 3000,
+                closable: true
             });
-    }
+            if (onRefreshTree) onRefreshTree();
+        } catch {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Error',
+                detail: removing ? 'Failed to remove manual from favourites.' : 'Failed to add manual to favourites.',
+                life: 3000,
+                closable: true
+            });
+        }
+    };
 
     const reject = () => {
-        toast.current.show({
+        toast.current?.show({
             severity: 'warn',
             summary: 'Rejected',
             detail: 'You have rejected add favourite',
@@ -267,7 +279,7 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
                         type="button"
                         className="download-icon-btn"
                         title="Download Manual"
-                        onClick={e => menu.current.show(e)}
+                        onClick={e => menu.current?.show(e)}
                     >
                         <img src="/download1.png" alt="Download" className="download-icon" />
                     </button>
@@ -286,8 +298,8 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
                     />
                     <Button
                         icon={isFavourite ? "pi pi-star-fill" : "pi pi-star"}
-                        label={isFavourite ? "My Favourite" : "Add to Favourite"}
-                        className="p-button-rounded p-button-warning p-button-lg"
+                        label={isFavourite ? "Remove from Favourite" : "Add to Favourite"}
+                        className={`p-button-rounded p-button-lg ${isFavourite ? 'p-button-danger' : 'p-button-warning'}`}
                         style={{
                             fontSize: '1rem',
                             minWidth: 170,
@@ -295,12 +307,12 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
                             height: '2.5rem', 
                             lineHeight: '1.2rem'
                         }}
-                        //tooltip={isFavourite ? "Already in Favourites" : "Add to Favourite"}
                         onClick={checkConfirmation}
-                        disabled={isFavourite}
+                        disabled={manualID <= 0}
                     />
                 </div>
             </div>
+            {manualID > 0 && <ManualRelatedCirculars manualId={manualID} />}
             <div style={{ flexDirection: 'row', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{flexDirection: 'row'}}>
                     { manualInfo.selectedManualNodeObj &&
@@ -456,7 +468,7 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
                 contentStyle={{ padding: '0.5rem', backgroundColor: '#e5eefbff' }}
                 onHide={() => { if (!visibleApproveManualDialog) return; setVisibleApproveManualDialog(false); }}>
                 <ApproveManual 
-                    manualName={manualInfo.selectedManualNodeObj?.label}
+                    manualName={manualInfo.selectedManualNodeObj?.label ?? ''}
                     version={manualInfo.selectedManualNodeObj?.data?.manualVersion}
                     status={manualInfo.selectedManualNodeObj?.data?.statusString}
                     onApprove={(comment) => { ApproveManuals({ dM_ManualID: manualInfo.selectedManualNodeObj?.key, dM_ManualVersionID: manualInfo.selectedManualNodeObj?.data?.dM_ManualVersionID, userID: userId, comments: comment }); }}

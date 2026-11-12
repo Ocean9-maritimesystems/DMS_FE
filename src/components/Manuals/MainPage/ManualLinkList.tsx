@@ -3,8 +3,11 @@ import { useDispatch } from 'react-redux';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { InputText } from 'primereact/inputtext';
+import { Button } from 'primereact/button';
+import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { setSelectedManualNodeObj } from '../../../store/slices/appSlice';
-import dmsLifecycleService from '../../../services/DMSLifecycleService';
+import dmsLifecycleService, { errorMessage } from '../../../services/DMSLifecycleService';
+import notify from '../../../services/notify';
 
 /**
  * "List grid" setting: shown in place of the tree when a manual link is active.
@@ -15,6 +18,7 @@ interface ManualLinkListProps {
     userId: string;
     /** Link key (?mode=), e.g. new, userfavorites, vsltoack. */
     calledMode: string;
+    onFavoritesChanged: () => void;
 }
 
 /** Tree node shape returned by DMS/GetTreeViewManualList (the content panel expects this shape). */
@@ -30,7 +34,7 @@ interface ManualNode {
         category: string;
         lastUpdated: string;
         isMatch?: boolean;
-        [k: string]: any;
+        [k: string]: unknown;
     };
     children?: ManualNode[];
 }
@@ -48,8 +52,9 @@ const flattenMatches = (nodes: ManualNode[]): ManualNode[] => {
     return rows;
 };
 
-const ManualLinkList: React.FC<ManualLinkListProps> = ({ userId, calledMode }) => {
+const ManualLinkList: React.FC<ManualLinkListProps> = ({ userId, calledMode, onFavoritesChanged }) => {
     const dispatch = useDispatch();
+    const isFavorites = calledMode === 'userfavorites';
     const [rows, setRows] = useState<ManualNode[]>([]);
     const [selected, setSelected] = useState<ManualNode | null>(null);
     const [search, setSearch] = useState('');
@@ -60,7 +65,7 @@ const ManualLinkList: React.FC<ManualLinkListProps> = ({ userId, calledMode }) =
         setLoading(true);
         setSearch('');
         dmsLifecycleService
-            .getApiCall(`DMS/GetTreeViewManualList?userId=${userId}&calledMode=${encodeURIComponent(calledMode)}`)
+            .getApiCall(`Manuals/GetTreeViewManualList?userId=${userId}&calledMode=${encodeURIComponent(calledMode)}`)
             .then((data: ManualNode[]) => {
                 if (cancelled) return;
                 const list = flattenMatches(data);
@@ -98,6 +103,28 @@ const ManualLinkList: React.FC<ManualLinkListProps> = ({ userId, calledMode }) =
         dispatch(setSelectedManualNodeObj(row));
     };
 
+    const removeFromFavourites = (row: ManualNode) => {
+        confirmDialog({
+            header: 'Remove from favourites?',
+            message: `Remove "${row.label}" from your favourites?`,
+            icon: 'pi pi-exclamation-triangle',
+            acceptLabel: 'Remove',
+            rejectLabel: 'Cancel',
+            acceptClassName: 'p-button-danger',
+            accept: async () => {
+                try {
+                    await dmsLifecycleService.postApiCall(
+                        `Manuals/RemoveFromFavourite?dm_ManualID=${row.data.dM_ManualID}&userId=${encodeURIComponent(userId)}`
+                    );
+                    notify.success('Manual removed from your favourites.');
+                    onFavoritesChanged();
+                } catch (err) {
+                    notify.error(errorMessage(err), 'Could not remove manual from favourites');
+                }
+            }
+        });
+    };
+
     const manualBody = (row: ManualNode) => (
         <div className="link-list-manual">
             <span className="link-list-name">{row.label}</span>
@@ -107,6 +134,17 @@ const ManualLinkList: React.FC<ManualLinkListProps> = ({ userId, calledMode }) =
 
     return (
         <div className="manual-link-list">
+            <ConfirmDialog />
+            {isFavorites && (
+                <div className="link-list-heading">
+                    <span className="link-list-heading-icon"><i className="pi pi-star-fill" aria-hidden="true" /></span>
+                    <div>
+                        <h2>My favourites</h2>
+                        <p>Quick access to the manuals you’ve saved.</p>
+                    </div>
+                    <span className="link-list-heading-count">{loading ? '—' : rows.length}</span>
+                </div>
+            )}
             <div className="link-list-search">
                 <span className="link-list-search-box">
                     <i className="pi pi-search" />
@@ -137,6 +175,26 @@ const ManualLinkList: React.FC<ManualLinkListProps> = ({ userId, calledMode }) =
                 <Column header="Manual" body={manualBody} />
                 <Column field="data.manualVersion" header="Ver." style={{ width: '56px' }} />
                 <Column field="data.statusString" header="Status" style={{ width: '96px' }} />
+                {isFavorites && (
+                    <Column
+                        header="Action"
+                        body={(row: ManualNode) => (
+                            <Button
+                                type="button"
+                                icon="pi pi-star-fill"
+                                className="p-button-text p-button-rounded p-button-danger link-list-remove"
+                                aria-label={`Remove ${row.label} from favourites`}
+                                tooltip="Remove from favourites"
+                                tooltipOptions={{ position: 'top' }}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    removeFromFavourites(row);
+                                }}
+                            />
+                        )}
+                        style={{ width: '58px' }}
+                    />
+                )}
             </DataTable>
         </div>
     );

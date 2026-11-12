@@ -14,11 +14,9 @@ const CompareVersionDetails: React.FC<ManualFormProps> = ({ closeForm, manualID,
     const [compareVersion, setCompareVersion] = useState<string>('');
     const [diffResult, setDiffResult] = useState<Diff.Change[]>([]);
 
-    const formatHTMLForDisplay = (htmlContent: string) => {
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = htmlContent;
-        return tempDiv.innerText;
-    };
+    /** The text of a version. DOMParser builds an inert document: nothing in the manual HTML runs or loads. */
+    const formatHTMLForDisplay = (htmlContent: string) =>
+        new DOMParser().parseFromString(htmlContent || '', 'text/html').body.textContent ?? '';
 
     const renderDiff = (changes: Diff.Change[]) => {
         const diffStyles = {
@@ -98,7 +96,7 @@ const CompareVersionDetails: React.FC<ManualFormProps> = ({ closeForm, manualID,
 
     useEffect(() => {
       const fetchData = async() => {
-        dmsLifecycleService.getApiCall(`DMS/GetCompareVersion_Content?dm_ManualID=${manualID}&compare_ManualVersionID=${DM_ManualVersionID_ToCompare}`)
+        dmsLifecycleService.getApiCall(`Manuals/GetCompareVersion_Content?dm_ManualID=${manualID}&compare_ManualVersionID=${DM_ManualVersionID_ToCompare}`)
             .then(data => {
                 setCurrentVersion(data.current_Version);
                 setCompareVersion(data.compare_Version);

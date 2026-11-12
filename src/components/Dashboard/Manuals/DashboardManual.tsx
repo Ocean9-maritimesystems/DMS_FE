@@ -5,6 +5,8 @@ import MetricCard from './MetricCard';
 import ManualChart from './ManualChart';
 import ActionItem from './ActionItem';
 import NotificationList from './NotificationList';
+import ReportDialog from '../../Reports/ReportDialog';
+import { ReportContextKey } from '../../Reports/reportCatalog';
 
 export interface DashboardProps {
     userId: string;
@@ -21,11 +23,12 @@ const DashboardManual: React.FC<DashboardProps> = ({ userId }) => {
     const [favouriteCnt, setFavouriteCnt] = useState(0);
     const [totalDocuments, setTotalDocuments] = useState(0);
     
+    const [reports, setReports] = useState<ReportContextKey | null>(null);
     const navigate = useNavigate();
 
     const setUserActionCounts = useCallback(() => {
-        dmsLifecycleService.getApiCall(`DMS/GetDashboardManualCounts?userId=${userId}`)
-            .then((data: any) => {
+        dmsLifecycleService.getApiCall<{ [count: string]: number | undefined } | null>(`Manuals/GetDashboardManualCounts?userId=${userId}`)
+            .then((data) => {
                 if (data) {
                     setNewCnt(data.newCnt || 0);
                     setToApprovalCnt(data.toApproveCnt || 0); // API field is toApproveCnt
@@ -140,8 +143,8 @@ const DashboardManual: React.FC<DashboardProps> = ({ userId }) => {
             label: 'Reports',
             icon: 'pi pi-chart-bar',
             color: 'success',
-            subText: 'Generate reports',
-            action: () => navigate('/reports')
+            subText: 'Manual and acknowledgement reports',
+            action: () => setReports('manuals')
         }
     ];
 
@@ -213,6 +216,7 @@ const DashboardManual: React.FC<DashboardProps> = ({ userId }) => {
                     </div>
                 </div>
             </div>
+            <ReportDialog context={reports} onHide={() => setReports(null)} />
         </div>
     );
 };

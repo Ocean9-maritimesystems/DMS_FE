@@ -1,5 +1,5 @@
 import React, { useImperativeHandle, forwardRef, useState, useRef, useEffect } from 'react';
-import { Tree } from "primereact/tree";
+import { Tree, type TreeProps, type TreeEventNodeEvent } from "primereact/tree";
 import { TreeNode } from 'primereact/treenode';
 import { Dialog } from 'primereact/dialog';
 import { ContextMenu } from 'primereact/contextmenu';
@@ -10,13 +10,12 @@ import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
 import type { ContextMenu as ContextMenuType } from 'primereact/contextmenu';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
-import axios from 'axios';
 import 'primereact/resources/themes/lara-light-blue/theme.css';
 import 'primereact/resources/primereact.min.css';
 import 'primeicons/primeicons.css';
-import dmsLifecycleService from '../../../services/DMSLifecycleService';
-import AddEditManual from '../AddEditManual/AddEditManual';
-import VesselDetails from '../../VesselDetails/VesselDetails';
+import dmsLifecycleService, { errorMessage } from '../../../services/DMSLifecycleService';
+import AddEditManual, { type ManualFormData } from '../AddEditManual/AddEditManual';
+import VesselDetails, { type VesselFormData } from '../../VesselDetails/VesselDetails';
 import ManualDetails from '../ViewManuals/ManualDetails';
 import ManualAckList from '../ViewManuals/ManualAckList';
 import notify from '../../../services/notify';
@@ -25,6 +24,8 @@ export interface ManualsTreeViewProps {
     userId: string;
     /** Dashboard/menu filter (?mode=). Matches are selectable; their parents are shown disabled. */
     calledMode?: string;
+    /** Manual to select and show when the tree has loaded (?id= in the address). */
+    focusManualId?: string;
 }
 
 interface TreeNodeData extends TreeNode {
@@ -36,16 +37,83 @@ interface TreeNodeData extends TreeNode {
     };
 }
 
-const ManualsTreeView = forwardRef<any, ManualsTreeViewProps>(({ userId, calledMode }, ref) => {
+/** What the Manuals page can ask of the tree (ref). */
+export interface ManualsTreeViewHandle {
+    refreshTree: () => void;
+}
+
+type TreeSelectionEvent = Parameters<NonNullable<TreeProps['onSelectionChange']>>[0];
+type TreeNodeClickEvent = Parameters<NonNullable<TreeProps['onNodeClick']>>[0];
+
+/**
+ * A node's key exactly as the API sent it (a number for manuals). The tree compares the selected key with
+ * node.key using ===, so it must be kept as it is: turned into text, no node matched and a click on a manual did
+ * not open it.
+ */
+type NodeKey = string | number;
+
+/** The key in a tree event (single selection: the key itself), or null. */
+const rawKey = (value: unknown): NodeKey | null => (typeof value === 'string' || typeof value === 'number' ? value : null);
+
+/** A node's key as text, for comparing and for expandedKeys (whose keys are text). */
+const keyOf = (node: TreeNode | null | undefined): string | null => (node?.key == null ? null : String(node.key));
+
+/** Find a node by key (number or text) without changing the selected manual. */
+const findNode = (list: TreeNode[], key: NodeKey | null): TreeNode | null => {
+    if (key == null) return null;
+    for (const node of list) {
+        if (keyOf(node) === String(key)) return node;
+        const child = node.children ? findNode(node.children, key) : null;
+        if (child) return child;
+    }
+    return null;
+};
+
+/** Keys of every node that has children (for expanding a filtered tree). */
+const allBranchKeys = (list: TreeNode[], keys: { [key: string]: boolean } = {}) => {
+    for (const node of list) {
+        if (node.children && node.children.length) {
+            keys[String(node.key)] = true;
+            allBranchKeys(node.children, keys);
+        }
+    }
+    return keys;
+};
+
+/** First node the user may select (parents shown only for context have selectable = false). */
+const firstSelectable = (list: TreeNode[]): TreeNode | null => {
+    for (const node of list) {
+        if (node.selectable !== false) return node;
+        const child = node.children ? firstSelectable(node.children) : null;
+        if (child) return child;
+    }
+    return null;
+};
+
+/** The nodes whose label (or a child's) contains the search text, with their parents. */
+const filterTree = (list: TreeNode[], searchTerm: string): TreeNodeData[] => {
+    const filtered: TreeNodeData[] = [];
+    const term = searchTerm.toLowerCase();
+    for (const node of list) {
+        const labelMatch = String(node.label ?? '').toLowerCase().includes(term);
+        const childrenMatch = node.children ? filterTree(node.children, searchTerm) : [];
+        if (labelMatch || childrenMatch.length > 0) {
+            filtered.push({ ...(node as TreeNodeData), children: childrenMatch.length > 0 ? childrenMatch : undefined });
+        }
+    }
+    return filtered;
+};
+
+const ManualsTreeView = forwardRef<ManualsTreeViewHandle, ManualsTreeViewProps>(({ userId, calledMode, focusManualId }, ref) => {
     const dispatch = useDispatch();
     const appInfo = useSelector((state: RootState) => state.appInfo);
     const [nodes, setNodes] = useState<TreeNodeData[]>([]);
     const [allNodes, setAllNodes] = useState<TreeNodeData[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedNodeKey, setSelectedNodeKey] = useState<any>(null);
+    const [selectedNodeKey, setSelectedNodeKey] = useState<NodeKey | null>(null);
     const [selectedNodeLabel, setSelectedNodeLabel] = useState<string | null | undefined>(null);
     const [searchValue, setSearchValue] = useState('');
-    const [contextMenuSelectionKey, setContextMenuSelectionKey] = useState(null);
+    const [contextMenuSelectionKey, setContextMenuSelectionKey] = useState<NodeKey | null>(null);
     const [expandedKeys, setExpandedKeys] = useState<{ [key: string]: boolean }>({});
     const [visibleAddEditDialog, setVisibleAddEditDialog] = useState<boolean>(false);
     const [visibleVesselDetailsDialog, setVisibleVesselDetailsDialog] = useState<boolean>(false);
@@ -53,7 +121,6 @@ const ManualsTreeView = forwardRef<any, ManualsTreeViewProps>(({ userId, calledM
     const [visibleVslAckDialog, setVisibleVslAckDialog] = useState<boolean>(false);
     const [selectedAction, setSelectedAction] = useState<string>('Add');
     const [headerText, setHeaderText] = useState<string>('Add Manual');
-    const [newNodeKey, setNewNodeKey] = useState<string | null>(null);
     const cm = useRef<ContextMenuType | null>(null);
 
     useImperativeHandle(ref, () => ({
@@ -104,14 +171,14 @@ const ManualsTreeView = forwardRef<any, ManualsTreeViewProps>(({ userId, calledM
                     label: 'Manual',
                     icon: 'pi',
                     command: () => {
-                        if (selectedNodeKey) confirmManualDelete(selectedNodeKey);
+                        if (selectedNodeKey != null) confirmManualDelete(String(selectedNodeKey));
                     }
                 },
                 {
                     label: 'Latest Version',
                     icon: 'pi',
                     command: () => {
-                        if (selectedNodeKey) confirmLatestVersionDelete(selectedNodeKey);
+                        if (selectedNodeKey != null) confirmLatestVersionDelete(String(selectedNodeKey));
                     }
                 }
             ]
@@ -159,51 +226,49 @@ const ManualsTreeView = forwardRef<any, ManualsTreeViewProps>(({ userId, calledM
 
         fetchData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [calledMode]);
+    }, [calledMode, focusManualId]);
 
+    /** Reloads the tree (after a change on the right: favourite, approve, edit) and keeps the same manual selected. */
     const refreshTree = () => {
-        setSelectedAction('Refresh')
-        const fetchData = async () => {
-            setNewNodeKey(appInfo.selectedManualNodeObj ? appInfo.selectedManualNodeObj.key : '');
-            await LoadTreeNodeData();
-        };
-
-        fetchData();
+        LoadTreeNodeData(selectedNodeKey ?? appInfo.selectedManualNodeObj?.key ?? null);
     };
 
-    useEffect(() => {
-        if (newNodeKey) {
-            setSelectedNodeKey(newNodeKey);
-            const selectedNode = findNodeByKey(nodes, newNodeKey);
-            setSelectedNodeLabel(selectedNode ? selectedNode.label : null);
-            setExpandedKeys(prev => ({
-                ...prev,
-                [appInfo.selectedManualNodeObj ? appInfo.selectedManualNodeObj.key : '']: true
-            }));
-            dispatch(setSelectedManualNodeObj(selectedNode));
-            setNewNodeKey(null);
-        }
-    }, [nodes]);
-
-    const LoadTreeNodeData = async () => {
+    /**
+     * Loads the tree. keepKey: the manual to have selected afterwards (the one shown, or one just added or edited),
+     * chosen from the data just loaded - not by an effect, which ran before the reload had arrived and then let it
+     * fall back to the first manual. Without keepKey (or when it is no longer in the tree): the ?id= manual, else
+     * the first one.
+     */
+    const LoadTreeNodeData = async (keepKey: NodeKey | null = null) => {
         try {
             const modeQuery = calledMode ? `&calledMode=${encodeURIComponent(calledMode)}` : '';
-            const data: TreeNodeData[] = (await dmsLifecycleService.getApiCall(`DMS/GetTreeViewManualList?userId=${userId}${modeQuery}`)) || [];
+            const data: TreeNodeData[] = (await dmsLifecycleService.getApiCall(`Manuals/GetTreeViewManualList?userId=${userId}${modeQuery}`)) || [];
             setAllNodes(data);
             setNodes(data);
             setSearchValue('');
 
             if (calledMode) {
-                // Filtered: open every branch so all matches are visible, and select the first match.
+                // Filtered: open every branch so all matches are visible; keep the manual shown when it still
+                // matches, else select the first match.
                 setExpandedKeys(allBranchKeys(data));
+                const kept = findNode(data, keepKey);
+                if (kept && kept.selectable !== false) {
+                    setSelectedNodeKey(kept.key ?? null);
+                    setSelectedNodeLabel(kept.label);
+                    dispatch(setSelectedManualNodeObj(kept));
+                    return;
+                }
                 const first = firstSelectable(data);
-                setSelectedNodeKey(first ? first.key : null);
+                setSelectedNodeKey(first?.key ?? null);
                 setSelectedNodeLabel(first ? first.label : null);
                 dispatch(setSelectedManualNodeObj(first));
                 return;
             }
             
-            if (selectedAction === 'AddSubLevel' || selectedAction === 'AddSameLevel' || selectedAction === 'Edit' || selectedAction === 'Refresh') {
+            if (keepKey != null && focusOn(data, String(keepKey), true)) {
+                return;
+            }
+            else if (focusManualId && focusOn(data, String(focusManualId))) {
                 return;
             }
             else {
@@ -213,110 +278,68 @@ const ManualsTreeView = forwardRef<any, ManualsTreeViewProps>(({ userId, calledM
                     setExpandedKeys({ [firstKey]: true });
                     setSelectedNodeLabel(firstNode.label);
                     dispatch(setSelectedManualNodeObj(firstNode));
-                    setSelectedNodeKey(data[0].key);
+                    setSelectedNodeKey(data[0].key ?? null);
                 }
             }
-        } catch (err: any) {
-            setError(err.message || 'Error fetching data');
+        } catch (err: unknown) {
+            dispatch(setError(errorMessage(err, 'The manuals could not be loaded.')));
         } finally {
             setLoading(false);
         }
     }
 
-    /** Keys of every node that has children (for expanding a filtered tree). */
-    function allBranchKeys(list: any[], keys: { [key: string]: boolean } = {}) {
-        for (const node of list) {
-            if (node.children && node.children.length) {
-                keys[node.key] = true;
-                allBranchKeys(node.children, keys);
+    /**
+     * Selects the manual with this key and opens the branches above it. False when it is not in the tree.
+     * keepOpen: the branches already open stay open (a reload); otherwise only the path to it is open.
+     */
+    function focusOn(list: TreeNode[], key: string, keepOpen = false): boolean {
+        const path: string[] = [];
+        const find = (nodesList: TreeNode[]): TreeNode | null => {
+            for (const node of nodesList) {
+                if (String(node.key) === key) return node;
+                if (node.children && node.children.length) {
+                    path.push(String(node.key));
+                    const hit = find(node.children);
+                    if (hit) return hit;
+                    path.pop();
+                }
             }
-        }
-        return keys;
+            return null;
+        };
+        const node = find(list);
+        if (!node) return false;
+        const keys: { [k: string]: boolean } = {};
+        path.forEach((k) => { keys[k] = true; });
+        setExpandedKeys(prev => (keepOpen ? { ...prev, ...keys } : keys));
+        setSelectedNodeKey(node.key ?? null);
+        setSelectedNodeLabel(node.label);
+        dispatch(setSelectedManualNodeObj(node));
+        return true;
     }
 
-    /** First node the user may select (parents shown only for context have selectable = false). */
-    function firstSelectable(list: any[]): any {
-        for (const node of list) {
-            if (node.selectable !== false) return node;
-            const child = node.children ? firstSelectable(node.children) : null;
-            if (child) return child;
-        }
-        return null;
-    }
-
-    function getFirstNodeKey(nodes: TreeNodeData[]) {
-        if (!nodes || nodes.length === 0) return null;
-        let node: any = nodes[0];
-        return node;
+    function getFirstNodeKey(list: TreeNodeData[]): TreeNodeData | null {
+        return list && list.length > 0 ? list[0] : null;
     }
     
-    const onContextMenu = (event: any) => {
+    const onContextMenu = (event: TreeEventNodeEvent) => {
         if (event.node.selectable === false) return; // context-only parent: no actions
-        setContextMenuSelectionKey(event.node.key);
-        setSelectedNodeKey(event.node.key);
+        setContextMenuSelectionKey(event.node.key ?? null);
+        setSelectedNodeKey(event.node.key ?? null);
         setSelectedNodeLabel(event.node.label);
         dispatch(setSelectedManualNodeObj(event.node));
         cm.current?.show(event.originalEvent);
     };
 
-    const onSelectionChange = (e: any) => {
-        const target = findNodeQuiet(nodes, e.value);
+    const onSelectionChange = (e: TreeSelectionEvent) => {
+        const key = rawKey(e.value); // a number for manuals: kept as it is
+        const target = findNode(nodes, key);
         if (target && target.selectable === false) return; // parents shown only for context cannot be opened
-        setSelectedNodeKey(e.value);
-        const selectedNode = findNodeByKey(nodes, e.value);
-        setSelectedNodeLabel(selectedNode ? selectedNode.label : null);
+        setSelectedNodeKey(key);
+        setSelectedNodeLabel(target ? target.label : null);
+        if (target) dispatch(setSelectedManualNodeObj(target));
     };
 
-    /** Find a node without changing the selected manual. */
-    const findNodeQuiet = (nodeList: any[], key: any): any => {
-        for (const node of nodeList) {
-            if (node.key === key) return node;
-            const child = node.children ? findNodeQuiet(node.children, key) : null;
-            if (child) return child;
-        }
-        return null;
-    };
-
-    const findNodeByKey = (nodeList: any, key: any) => {
-        for (let node of nodeList) {
-            if (node.key === key) {
-                dispatch(setSelectedManualNodeObj(node));
-                return node;
-            }
-            if (node.children) {
-                const childNode: any = findNodeByKey(node.children, key);
-                if (childNode) {
-                    dispatch(setSelectedManualNodeObj(childNode));
-                    return childNode;
-                }
-            }
-        }
-        return null;
-    };
-
-    const filterTree = (nodes: any, searchTerm: string): TreeNodeData[] => {
-        const filtered = [];
-
-        for (const node of nodes) {
-            const labelMatch = node.label.toLowerCase().includes(searchTerm.toLowerCase());
-
-            let childrenMatch: any = [];
-            if (node.children) {
-                childrenMatch = filterTree(node.children, searchTerm);
-            }
-
-            if (labelMatch || childrenMatch.length > 0) {
-                filtered.push({
-                    ...node,
-                    children: childrenMatch.length > 0 ? childrenMatch : undefined
-                });
-            }
-        }
-
-        return filtered;
-    };
-
-    const onSearchChange = (e: any) => {
+    const onSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setSearchValue(value);
 
@@ -330,19 +353,19 @@ const ManualsTreeView = forwardRef<any, ManualsTreeViewProps>(({ userId, calledM
         }
     };
 
-    const onNodeSelect = (event: any) => {
+    const onNodeSelect = (event: TreeNodeClickEvent) => {
         if (event.node.selectable === false) return;
-        setSelectedNodeKey(event.node.key);
+        setSelectedNodeKey(event.node.key ?? null);
         setSelectedNodeLabel(event.node.label);
     };
 
     const expandAll = () => {
         const keys: { [key: string]: boolean } = {};
 
-        const traverse = (nodes: any[]) => {
-            for (const node of nodes) {
+        const traverse = (list: TreeNode[]) => {
+            for (const node of list) {
                 if (node.children) {
-                    keys[node.key] = true;
+                    keys[String(node.key)] = true;
                     traverse(node.children);
                 }
             }
@@ -356,41 +379,40 @@ const ManualsTreeView = forwardRef<any, ManualsTreeViewProps>(({ userId, calledM
         setExpandedKeys({});
     };
     
-    const updateManuals = async (data: any) => {
+    const updateManuals = async (data: ManualFormData) => {
         try {
-            var url = '';
+            let url = '';
             if (selectedAction === 'AddSubLevel' || selectedAction === 'AddSameLevel') {
-                url = 'DMS/AddManual';
+                url = 'Manuals/AddManual';
             } else if (selectedAction === 'Edit') {
-                url = 'DMS/EditManual';
+                url = 'Manuals/EditManual';
             }
 
-            const response = await dmsLifecycleService.postApiCall(url, data);
+            const response = await dmsLifecycleService.postApiCall<{ manualId?: number | string } | null>(url, data);
 
             setVisibleAddEditDialog(false);
             if (selectedAction === 'AddSubLevel' || selectedAction === 'AddSameLevel') {
-                await LoadTreeNodeData();
-                setNewNodeKey(response.manualId || null);
+                // The new manual, selected (its parent opened) so its rights can be set next.
+                await LoadTreeNodeData(response?.manualId ?? null);
                 setVisibleVesselDetailsDialog(true);
             } else {
-                setNewNodeKey(data.DM_ManualID);
-                await LoadTreeNodeData();
+                await LoadTreeNodeData(data.DM_ManualID);
             }
                       
-        } catch (err: any) {
-            dispatch(setError(err.message || 'Error adding manual'));
+        } catch (err: unknown) {
+            dispatch(setError(errorMessage(err, 'The manual could not be saved.')));
         }
     }
 
-    const updateVesselDetails = async (data: any) => {
+    const updateVesselDetails = async (data: VesselFormData) => {
         try {
-            var url = 'DMS/UpdateManualRights';           
+            const url = 'Manuals/UpdateManualRights';           
             await dmsLifecycleService.postApiCall(url, data);
 
             setVisibleVesselDetailsDialog(false);
-            await LoadTreeNodeData();
-        } catch (err: any) {
-            dispatch(setError(err.message || 'Error updating vessel details'));
+            await LoadTreeNodeData(selectedNodeKey);
+        } catch (err: unknown) {
+            dispatch(setError(errorMessage(err, 'The manual rights could not be saved.')));
         }
     }
 
@@ -407,23 +429,10 @@ const ManualsTreeView = forwardRef<any, ManualsTreeViewProps>(({ userId, calledM
     const callManualDeleteAPI = async (nodeKey: string) => {
         try {
             setSelectedAction('');
-            const response = await dmsLifecycleService.deleteApiCall(`DMS/DeleteManual/${nodeKey}`)
-
-            if (!response.ok) {
-               // throw new Error('Failed to delete');
-            }
-
+            await dmsLifecycleService.deleteApiCall(`Manuals/DeleteManual/${nodeKey}`);
             await LoadTreeNodeData();
-        } catch (err: any) {
-            if (axios.isAxiosError(err)) {
-                const msg =
-                    err.response?.data?.message ||
-                    err.response?.data?.error ||
-                    'Something went wrong.';
-                notify.error(msg, 'Delete failed');
-            } else {
-                notify.error(err.message, 'Delete failed');
-            }
+        } catch (err: unknown) {
+            notify.error(errorMessage(err), 'Delete failed');
         }
     };
 
@@ -440,23 +449,11 @@ const ManualsTreeView = forwardRef<any, ManualsTreeViewProps>(({ userId, calledM
     const callLatestVersionDeleteAPI = async (nodeKey: string) => {
         try {
             setSelectedAction('');
-            const response = await dmsLifecycleService.deleteApiCall(`DMS/DeleteManual/${nodeKey}`);
-            
-            if (!response.ok) {
-               // throw new Error('Failed to delete');
-            }
-
-            await LoadTreeNodeData();
-        } catch (err: any) {
-            if (axios.isAxiosError(err)) {
-                const msg =
-                    err.response?.data?.message ||
-                    err.response?.data?.error ||
-                    'Something went wrong.';
-                notify.error(msg, 'Delete failed');
-            } else {
-                notify.error(err.message, 'Delete failed');
-            }
+            // Only the latest version (the manual itself stays): api/Manuals/DeleteManualVersion.
+            await dmsLifecycleService.deleteApiCall(`Manuals/DeleteManualVersion/${nodeKey}`);
+            await LoadTreeNodeData(nodeKey); // the manual stays: keep it selected
+        } catch (err: unknown) {
+            notify.error(errorMessage(err), 'Delete failed');
         }
     };
 
@@ -538,11 +535,12 @@ const ManualsTreeView = forwardRef<any, ManualsTreeViewProps>(({ userId, calledM
                     value={nodes}
                     selectionMode="single"
                     onNodeClick={onNodeSelect}
-                    selectionKeys={selectedNodeKey}
+                    // The key as the API sent it (the tree's type says text; it compares with === against node.key).
+                    selectionKeys={selectedNodeKey as string | null}
                     onSelectionChange={onSelectionChange}
                     expandedKeys={expandedKeys}
                     onToggle={(e) => setExpandedKeys(e.value)}
-                    contextMenuSelectionKey={contextMenuSelectionKey ?? undefined}
+                    contextMenuSelectionKey={(contextMenuSelectionKey ?? undefined) as string | undefined}
                     onContextMenu={onContextMenu}
                     emptyMessage={calledMode ? 'No manuals match this filter.' : 'No manuals found.'}
                     className="custom-tree"
@@ -567,7 +565,7 @@ const ManualsTreeView = forwardRef<any, ManualsTreeViewProps>(({ userId, calledM
                     onSubmit={updateManuals}
                     closeForm={() => { setVisibleAddEditDialog(false); }}
                     selectedAction={selectedAction}
-                    selectedManualID={selectedNodeKey ? Number(selectedNodeKey) : -1}
+                    selectedManualID={selectedNodeKey != null ? Number(selectedNodeKey) : -1}
                     selectedManualVersionID={selectedNodeKey ? Number(appInfo.selectedManualNodeObj?.data?.dM_ManualVersionID) : -1}
                 />
             </Dialog>

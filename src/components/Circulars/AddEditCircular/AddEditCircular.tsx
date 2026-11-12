@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { InputText } from 'primereact/inputtext';
-import { Dropdown } from 'primereact/dropdown';
+import { Dropdown, type DropdownChangeEvent } from 'primereact/dropdown';
 import { MultiSelect } from 'primereact/multiselect';
 import { Button } from 'primereact/button';
 import { Calendar } from 'primereact/calendar';
@@ -8,20 +8,26 @@ import { InputTextarea } from 'primereact/inputtextarea';
 import { InputSwitch } from 'primereact/inputswitch';
 import { SelectButton } from 'primereact/selectbutton';
 import { Checkbox } from 'primereact/checkbox';
+import { Dialog } from 'primereact/dialog';
 import dmsLifecycleService from '../../../services/DMSLifecycleService';
 import { Vessel } from '../../VesselDetails/VesselDetails';
+import { canOpenInBrowser } from '../../utils/sanitize';
 import './AddEditCircular.scss';
 
 interface AddEditCircularProps {
     initialData?: CircularFormData;
-    onSubmit: (data: CircularFormData) => void;
+    /**
+     * release: also release the circular to the vessels after saving it ("Save and release").
+     * Resolves false when the save failed: the form stays open with what was typed.
+     */
+    onSubmit: (data: CircularFormData, options?: { release?: boolean }) => void | Promise<boolean | void>;
     onCancel: () => void;
     circularType: string;
     selectedAction: string;
     selectedCIR_MasterID: number;
 }
 
-interface CircularFormData {
+export interface CircularFormData {
     ciR_MasterID: number;
     ciR_BlobID: number;
     circularType: string;
@@ -42,7 +48,8 @@ interface CircularFormData {
     fileName?: string;
     fileType?: string;
     originalFileType?: string;
-    blobSize?: string;
+    /** Text in the form; sent to the API as a number. */
+    blobSize?: string | number;
     blobContents?: Uint8Array | string;
     calledMode?: string;
     vesselIdList?: number[];
@@ -54,18 +61,66 @@ interface AllowedUserOption {
     department?: string;
 }
 
-const toAllowedUserOptions = (value: any): AllowedUserOption[] => {
+/** api/circular/GetCIRDetails: the circular as stored (some lists come under older names too). */
+interface CircularDetailsDto {
+    ciR_MasterID?: number;
+    ciR_BlobID?: number;
+    circularType?: string;
+    ciR_CategoryID?: number;
+    ciR_Number?: string;
+    allowedUserToAck?: string;
+    allowedUserToAckList?: unknown;
+    allowedUsersToAck?: unknown;
+    requireAcknowledgement?: boolean;
+    vesselIdList?: unknown;
+    vesselIDList?: unknown;
+    title?: string;
+    status?: CircularFormData['status'];
+    priority?: string | number;
+    dateIssued?: string | null;
+    releasedDate?: string | null;
+    remarks?: string;
+    createdBy?: string;
+    description?: string;
+    fileName?: string;
+    fileType?: string;
+    originalFileType?: string;
+    blobSize?: string | number;
+    blobContents?: string;
+    [other: string]: unknown;
+}
+
+/** api/circular/GetNextCIRNumbersByCategory */
+interface NextCircularNumberDto {
+    cirNumber?: string;
+    allowedUserToAck?: string;
+    allowedUserToAckList?: unknown;
+    allowedUsersToAck?: unknown;
+}
+
+/** api/circular/GetCategories */
+interface CircularCategoryDto {
+    category: string;
+    ciR_CategoryID: number;
+}
+
+/** A value from the API that may be an object: its fields (empty when it is not one). */
+const fieldsOf = (value: unknown): Record<string, unknown> =>
+    value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+
+const toAllowedUserOptions = (value: unknown): AllowedUserOption[] => {
     const values = Array.isArray(value)
         ? value
         : typeof value === 'string'
             ? value.split(',').map(item => item.trim()).filter(Boolean)
             : [];
 
-    return values.map(item => {
-        if (typeof item === 'string') {
-            return { label: item, value: item };
+    return (values as unknown[]).map(entry => {
+        if (typeof entry === 'string') {
+            return { label: entry, value: entry };
         }
 
+        const item = fieldsOf(entry);
         const optionValue = String(item.value ?? item.id ?? item.userRank ?? item.userName ?? item.name ?? '');
         return {
             label: String(item.label ?? item.userRank ?? item.userName ?? item.name ?? optionValue),
@@ -74,13 +129,14 @@ const toAllowedUserOptions = (value: any): AllowedUserOption[] => {
     }).filter(option => option.value);
 };
 
-const toVesselRankOptions = (ranks: any): AllowedUserOption[] => {
+const toVesselRankOptions = (ranks: unknown): AllowedUserOption[] => {
     if (!Array.isArray(ranks)) return [];
 
-    return ranks
-        .map((rank): AllowedUserOption | null => {
-            const userRank = String(rank?.userRank ?? rank?.UserRank ?? '').trim();
-            const department = String(rank?.userDeptDisplay ?? rank?.UserDeptDisplay ?? '').trim();
+    return (ranks as unknown[])
+        .map((entry): AllowedUserOption | null => {
+            const rank = fieldsOf(entry);
+            const userRank = String(rank.userRank ?? rank.UserRank ?? '').trim();
+            const department = String(rank.userDeptDisplay ?? rank.UserDeptDisplay ?? '').trim();
             return userRank
                 ? { label: userRank, value: userRank, department }
                 : null;
@@ -88,22 +144,25 @@ const toVesselRankOptions = (ranks: any): AllowedUserOption[] => {
         .filter((option): option is AllowedUserOption => option !== null);
 };
 
-const toAllowedUserValues = (value: any): string[] =>
+const toAllowedUserValues = (value: unknown): string[] =>
     toAllowedUserOptions(value).map(option => option.value);
 
-const toVesselIds = (value: any): number[] => {
+const toVesselIds = (value: unknown): number[] => {
     if (!Array.isArray(value)) return [];
 
-    return value
+    return (value as unknown[])
         .map(item => {
             if (typeof item === 'number') return item;
-            return Number(item?.vesselID ?? item?.vesselId ?? item?.id ?? item);
+            const v = fieldsOf(item);
+            return Number(v.vesselID ?? v.vesselId ?? v.id ?? item);
         })
         .filter(vesselId => Number.isFinite(vesselId) && vesselId > 0);
 };
 
-const getReferenceValue = (data: any): string =>
-    String(data?.reference ?? data?.Reference ?? data?.circularReference ?? data?.cirReference ?? '');
+const getReferenceValue = (value: unknown): string => {
+    const data = fieldsOf(value);
+    return String(data.reference ?? data.Reference ?? data.circularReference ?? data.cirReference ?? '');
+};
 
 const decodeBlobContents = (contents: Uint8Array | string): Uint8Array | null => {
     if (contents instanceof Uint8Array) return contents;
@@ -158,6 +217,13 @@ const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const ACCEPTED_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx'];
 
 const fileExtension = (name: string) => (name.split('.').pop() || '').toLowerCase();
+const fileContentTypes: Record<string, string> = {
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+};
 
 const fileIcon = (name: string) => {
     const ext = fileExtension(name);
@@ -180,9 +246,10 @@ interface VesselPickerProps {
     vessels: Vessel[];
     selectedIds: number[];
     onChange: (ids: number[]) => void;
+    disabled: boolean;
 }
 
-const VesselPicker: React.FC<VesselPickerProps> = ({ vessels, selectedIds, onChange }) => {
+const VesselPicker: React.FC<VesselPickerProps> = ({ vessels, selectedIds, onChange, disabled }) => {
     const [search, setSearch] = useState('');
     const [type, setType] = useState<string>('all');
 
@@ -216,10 +283,10 @@ const VesselPicker: React.FC<VesselPickerProps> = ({ vessels, selectedIds, onCha
     };
 
     return (
-        <div className="cir-vessels">
+        <div className={`cir-vessels${disabled ? ' disabled' : ''}`} aria-disabled={disabled}>
             <div className="cir-vessels-search">
                 <i className="pi pi-search" />
-                <InputText value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search vessels" aria-label="Search vessels" />
+                <InputText value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search vessels" aria-label="Search vessels" disabled={disabled} />
             </div>
             {types.length > 1 && (
                 <div className="cir-vessels-types" role="group" aria-label="Vessel type">
@@ -229,6 +296,7 @@ const VesselPicker: React.FC<VesselPickerProps> = ({ vessels, selectedIds, onCha
                             type="button"
                             className={`cir-chip${type === t ? ' active' : ''}`}
                             onClick={() => setType(t)}
+                            disabled={disabled}
                         >
                             {t === 'all' ? 'All types' : t}
                         </button>
@@ -237,13 +305,13 @@ const VesselPicker: React.FC<VesselPickerProps> = ({ vessels, selectedIds, onCha
             )}
             <div className="cir-vessels-head">
                 <label className="cir-check">
-                    <Checkbox checked={allVisibleSelected} onChange={toggleAllVisible} disabled={visible.length === 0} />
+                    <Checkbox checked={allVisibleSelected} onChange={toggleAllVisible} disabled={disabled || visible.length === 0} />
                     <span>Select all shown</span>
                 </label>
                 <span className="cir-muted">
                     {selectedIds.length} of {vessels.length} selected
                     {selectedIds.length > 0 && (
-                        <button type="button" className="cir-link" onClick={() => onChange([])}>Clear</button>
+                        <button type="button" className="cir-link" onClick={() => onChange([])} disabled={disabled}>Clear</button>
                     )}
                 </span>
             </div>
@@ -252,7 +320,7 @@ const VesselPicker: React.FC<VesselPickerProps> = ({ vessels, selectedIds, onCha
                 {visible.map(v => (
                     <li key={v.vesselID}>
                         <label className={`cir-check cir-vessel-row${selected.has(v.vesselID) ? ' checked' : ''}`}>
-                            <Checkbox checked={selected.has(v.vesselID)} onChange={() => toggle(v.vesselID)} />
+                            <Checkbox checked={selected.has(v.vesselID)} onChange={() => toggle(v.vesselID)} disabled={disabled} />
                             <span className="cir-vessel-name">{v.vslName}</span>
                             <span className="cir-vessel-type">{v.vslType}</span>
                         </label>
@@ -265,7 +333,7 @@ const VesselPicker: React.FC<VesselPickerProps> = ({ vessels, selectedIds, onCha
 
 const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit, onCancel, circularType, selectedAction, selectedCIR_MasterID }) => {
     const [formData, setFormData] = useState<CircularFormData>(initialData || defaultData);
-    const [categoryOptions, setCategoryOptions] = useState<{ label: string; value: string }[]>([]);
+    const [categoryOptions, setCategoryOptions] = useState<{ label: string; value: number }[]>([]); // value: ciR_CategoryID
     const [allowedUserOptions, setAllowedUserOptions] = useState<AllowedUserOption[]>([]);
     const [selectedAllowedUsers, setSelectedAllowedUsers] = useState<string[]>(
         toAllowedUserValues(initialData?.allowedUserToAck)
@@ -281,6 +349,7 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
     const [fileError, setFileError] = useState('');
     const [dragOver, setDragOver] = useState(false);
     const [submitted, setSubmitted] = useState(false);
+    const [saving, setSaving] = useState(false); // a save is on its way: no second one
     // A new circular gets a temporary record when the form opens. If the form closes without saving
     // (Cancel, the X, or leaving the page) that record is removed, so no empty drafts are left behind.
     const tempMasterIdRef = useRef(-1);
@@ -294,7 +363,7 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
 
     useEffect(() => {
         const fetchData = async () => {
-                dmsLifecycleService.getApiCall('DMS/GetManualRightsUsersAsync')
+                dmsLifecycleService.getApiCall('Manuals/GetManualRightsUsersAsync')
                     .then(data => {
                         setVesselList(data.vesselList || []);
                         setAllowedUserOptions(toVesselRankOptions(data.vslRankList));
@@ -304,9 +373,9 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
                         setAllowedUserOptions([]);
                     });
 
-                dmsLifecycleService.getApiCall(`circular/GetCategories?isToIncludeAll=false&circularType=${circularType}`)
+                dmsLifecycleService.getApiCall<CircularCategoryDto[] | null>(`circular/GetCategories?isToIncludeAll=false&circularType=${circularType}`)
                     .then(data => {
-                        const options = data.map((item: any) => ({
+                        const options = (data || []).map((item) => ({
                             label: item.category,
                             value: item.ciR_CategoryID,
                         }));
@@ -315,8 +384,16 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
                     .catch(() => setCategoryOptions([]));
 
                 if (selectedAction === 'Edit' && selectedCIR_MasterID > 0) {
-                    dmsLifecycleService.getApiCall(`circular/GetCIRDetails/${selectedCIR_MasterID}`)
-                        .then((data: any) => {
+                    dmsLifecycleService.getApiCall<CircularDetailsDto>(`circular/GetCIRDetails/${selectedCIR_MasterID}`)
+                        .then((data) => {
+                            const allowedUsers = data.allowedUserToAckList ?? data.allowedUsersToAck ?? data.allowedUserToAck;
+                            const allowedUserValues = toAllowedUserValues(allowedUsers);
+                            const vesselIds = toVesselIds(data.vesselIdList ?? data.vesselIDList);
+                            const acknowledgementRequired =
+                                Boolean(data.requireAcknowledgement) ||
+                                allowedUserValues.length > 0 ||
+                                vesselIds.length > 0;
+
                             setFormData({
                                 ciR_MasterID: data.ciR_MasterID ?? selectedCIR_MasterID ?? -1,
                                 ciR_BlobID: data.ciR_BlobID ?? -1,
@@ -324,11 +401,11 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
                                 ciR_CategoryID: data.ciR_CategoryID ?? -1,
                                 ciR_Number: data.ciR_Number ?? '',
                                 allowedUserToAck: data.allowedUserToAck ?? '',
-                                requireAcknowledgement: data.requireAcknowledgement ?? false,
+                                requireAcknowledgement: acknowledgementRequired,
                                 reference: getReferenceValue(data),
                                 title: data.title ?? '',
                                 status: data.status ?? 'Draft',
-                                priority: data.priority?.toString() ?? '3',
+                                priority: (data.priority?.toString() ?? '3') as CircularFormData['priority'],
                                 dateIssued: data.dateIssued ? new Date(data.dateIssued) : null,
                                 releasedDate: data.releasedDate ? new Date(data.releasedDate) : null,
                                 remarks: data.remarks ?? '',
@@ -340,12 +417,11 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
                                 blobSize: data.blobSize ?? '0',
                                 blobContents: data.blobContents ?? '',
                                 calledMode: 'Edit',
-                                vesselIdList: toVesselIds(data.vesselIdList ?? data.vesselIDList)
+                                vesselIdList: vesselIds
                             });
-                            const allowedUsers = data.allowedUserToAckList ?? data.allowedUsersToAck ?? data.allowedUserToAck;
-                            setSelectedAllowedUsers(toAllowedUserValues(allowedUsers));
-                            setSelectedVesselIds(toVesselIds(data.vesselIdList ?? data.vesselIDList));
-                            setRequireAcknowledgement(data.requireAcknowledgement ?? false);
+                            setSelectedAllowedUsers(allowedUserValues);
+                            setSelectedVesselIds(vesselIds);
+                            setRequireAcknowledgement(acknowledgementRequired);
                         })
                         .catch(() => {
 
@@ -353,7 +429,7 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
                 }
                 else if (selectedAction === 'Add') {
                     // For add mode, reset to default or initialData
-                    var cir_MasterID = await dmsLifecycleService.postApiCall(`circular/AddCirMaster?circularType=${circularType}`, {});
+                    const cir_MasterID = await dmsLifecycleService.postApiCall(`circular/AddCirMaster?circularType=${circularType}`, {});
 
                     setFormData({
                         ciR_MasterID: cir_MasterID,
@@ -398,23 +474,21 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
         }
     }, []);
 
-    const handleInputChange = (e: any, name: string) => {
-        const val = (e.target && e.target.value !== undefined) ? e.target.value : e.value;
-        let _formData = { ...formData };
-        // @ts-ignore
-        _formData[name] = val;
-        setFormData(_formData);
+    /** Text boxes give event.target.value; the date picker gives event.value. */
+    const handleInputChange = (e: { target?: unknown; value?: unknown }, name: keyof CircularFormData) => {
+        const target = e.target as { value?: unknown } | null | undefined;
+        const val = target && target.value !== undefined ? target.value : e.value;
+        setFormData({ ...formData, [name]: val } as CircularFormData);
     };
 
-    const handleCategoryChange = (e: any) => {
+    const handleCategoryChange = (e: DropdownChangeEvent) => {
         const categoryID = e.value;
         setFormData({ ...formData, ciR_CategoryID: categoryID });
         
         // Fetch circular number based on selected category
         if (categoryID && selectedAction !== 'Edit') {
-            dmsLifecycleService.getApiCall(`circular/GetNextCIRNumbersByCategory?categoryID=${categoryID}&cir_MasterID=${formData.ciR_MasterID}`)
-                .then((data: any) => {
-                    console.log('Fetched circular number:', data);
+            dmsLifecycleService.getApiCall<NextCircularNumberDto>(`circular/GetNextCIRNumbersByCategory?categoryID=${categoryID}&cir_MasterID=${formData.ciR_MasterID}`)
+                .then((data) => {
                     setFormData(prev => ({ 
                         ...prev, 
                         ciR_Number: data.cirNumber || '',
@@ -449,8 +523,8 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
                 ...prev,
                 fileName: file.name,
                 blobSize: file.size.toString(),
-                fileType: file.type || ext,
-                originalFileType: file.type || ext,
+                fileType: ext,
+                originalFileType: ext,
                 blobContents: byteArray
             }));
         };
@@ -470,13 +544,45 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
-    /** Opens the attached file (new upload or the one saved with the circular) in a new tab. */
-    const viewFile = () => {
+    const getAttachmentBlob = () => {
         if (!formData.blobContents) return;
         const bytes = decodeBlobContents(formData.blobContents);
         if (!bytes) return;
-        const url = URL.createObjectURL(new Blob([bytes], { type: formData.fileType && formData.fileType.includes('/') ? formData.fileType : undefined }));
+        const ext = fileExtension(formData.fileName || '');
+        const contentType = fileContentTypes[ext]
+            || (formData.originalFileType?.includes('/') ? formData.originalFileType : undefined)
+            || (formData.fileType?.includes('/') ? formData.fileType : undefined);
+        return new Blob([bytes], { type: contentType });
+    };
+
+    /**
+     * Opens the attached file (new upload or the one saved with the circular) in a new tab. Only PDFs, images and
+     * plain text are opened; anything else (HTML, SVG...) is downloaded, because a page opened from here would run
+     * as part of this site with the user's login.
+     */
+    const viewFile = () => {
+        const blob = getAttachmentBlob();
+        if (!blob || !formData.fileName) return;
+        if (!canOpenInBrowser(blob.type)) {
+            downloadFile();
+            return;
+        }
+        const file = new File([blob], formData.fileName, { type: blob.type });
+        const url = URL.createObjectURL(file);
         window.open(url, '_blank', 'noopener');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+    };
+
+    const downloadFile = () => {
+        const blob = getAttachmentBlob();
+        if (!blob || !formData.fileName) return;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = formData.fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 60000);
     };
 
@@ -501,13 +607,29 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
     ].filter(Boolean) as string[];
     const showError = (key: keyof typeof errors) => submitted && errors[key];
 
+    const [confirmRelease, setConfirmRelease] = useState(false);
+    const isDraft = (formData.status || 'Draft') === 'Draft';
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        submitForm(false);
+    };
+
+    /** "Save and release": check the form, then ask before releasing. */
+    const askRelease = () => {
+        setSubmitted(true);
+        if (missing.length > 0) return;
+        setConfirmRelease(true);
+    };
+
+    const submitForm = async (release: boolean) => {
+        if (saving) return;
         setSubmitted(true);
         if (missing.length > 0) return;
 
         // Send values the API can always read: text never null, numbers never empty text.
-        const dataToSubmit: any = {
+        const ext = fileExtension(formData.fileName || '');
+        const dataToSubmit: CircularFormData = {
             ...formData,
             ciR_BlobID: Number(formData.ciR_BlobID ?? -1),
             ciR_CategoryID: Number(formData.ciR_CategoryID ?? -1),
@@ -519,25 +641,37 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
             createdBy: formData.createdBy ?? '',
             description: formData.description ?? '',
             fileName: formData.fileName ?? '',
-            fileType: formData.fileType ?? '',
-            originalFileType: formData.originalFileType ?? '',
+            fileType: ext || formData.fileType || '',
+            originalFileType: ext || formData.originalFileType || '',
             status: formData.status || 'Draft',
         };
         dataToSubmit.allowedUserToAck = selectedAllowedUsers.join(', ');
         dataToSubmit.vesselIdList = selectedVesselIds;
         dataToSubmit.requireAcknowledgement = requireAcknowledgement;
+        // The file loaded with the circular (text from the API) is not sent back: saving the other fields then leaves
+        // the stored file as it is. Sending it again re-saved it with a new date, so every vessel downloaded it again.
+        // A newly chosen file (bytes) is sent; a removed one goes as an empty file name.
+        if (typeof dataToSubmit.blobContents === 'string') dataToSubmit.blobContents = undefined;
         if (dataToSubmit.blobContents && dataToSubmit.blobContents instanceof Uint8Array) {
-            let binary = '';
-            const bytes = new Uint8Array(dataToSubmit.blobContents);
-            const len = bytes.byteLength;
-            for (let i = 0; i < len; i++) {
-                binary += String.fromCharCode(bytes[i]);
+            // Built 32 KB at a time: one character at a time froze the page for seconds on a large file.
+            const bytes = dataToSubmit.blobContents;
+            const parts: string[] = [];
+            for (let i = 0; i < bytes.length; i += 0x8000) {
+                parts.push(String.fromCharCode(...bytes.subarray(i, i + 0x8000)));
             }
-            dataToSubmit.blobContents = window.btoa(binary);
+            dataToSubmit.blobContents = window.btoa(parts.join(''));
         }
 
+        // Kept when the form closes: the temporary record is now the circular. A failed save (false) leaves it
+        // temporary again, so Cancel still removes it.
         savedRef.current = true;
-        onSubmit(dataToSubmit);
+        setSaving(true);
+        try {
+            const ok = await onSubmit(dataToSubmit, { release });
+            if (ok === false) savedRef.current = false;
+        } finally {
+            setSaving(false);
+        }
     };
 
     // The temporary record is removed when the form closes (see the effect above).
@@ -657,7 +791,10 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
                                 </div>
                                 <div className="cir-file-actions">
                                     {formData.blobContents && (
-                                        <Button type="button" icon="pi pi-eye" className="p-button-text p-button-sm" onClick={viewFile} tooltip="Open" tooltipOptions={{ position: 'top' }} aria-label="Open file" />
+                                        <>
+                                            <Button type="button" icon="pi pi-eye" className="p-button-text p-button-sm" onClick={viewFile} tooltip="Open" tooltipOptions={{ position: 'top' }} aria-label="Open file" />
+                                            <Button type="button" icon="pi pi-download" className="p-button-text p-button-sm" onClick={downloadFile} tooltip="Download" tooltipOptions={{ position: 'top' }} aria-label="Download file" />
+                                        </>
                                     )}
                                     <Button type="button" icon="pi pi-refresh" className="p-button-text p-button-sm" onClick={() => fileInputRef.current?.click()} tooltip="Replace" tooltipOptions={{ position: 'top' }} aria-label="Replace file" />
                                     <Button type="button" icon="pi pi-trash" className="p-button-text p-button-danger p-button-sm" onClick={removeFile} tooltip="Remove" tooltipOptions={{ position: 'top' }} aria-label="Remove file" />
@@ -702,6 +839,7 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
                                 id="allowedUserToAck"
                                 className="allowed-user-rank-select"
                                 panelClassName="allowed-user-rank-panel"
+                                disabled={!requireAcknowledgement}
                                 value={selectedAllowedUsers}
                                 options={allowedUserOptions}
                                 onChange={(e) => setSelectedAllowedUsers(e.value || [])}
@@ -731,7 +869,12 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
 
                     <section className="cir-card cir-card-vessels">
                         <h3><i className="pi pi-send" /> Vessels</h3>
-                        <VesselPicker vessels={vesselList} selectedIds={selectedVesselIds} onChange={setSelectedVesselIds} />
+                        <VesselPicker
+                            vessels={vesselList}
+                            selectedIds={selectedVesselIds}
+                            onChange={setSelectedVesselIds}
+                            disabled={!requireAcknowledgement}
+                        />
                     </section>
                 </div>
             </div>
@@ -744,9 +887,37 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
                 </span>
                 <div className="cir-form-buttons">
                     <Button type="button" label="Cancel" onClick={handleCancel} className="p-button-text" />
-                    <Button type="submit" label={`Save ${typeLabel}`} icon="pi pi-check" />
+                    <Button type="submit" label={isDraft ? 'Save as draft' : `Save ${typeLabel}`} icon="pi pi-check"
+                        className={isDraft ? 'p-button-outlined' : undefined} loading={saving} disabled={saving} />
+                    {isDraft && (
+                        <Button type="button" label="Save and release" icon="pi pi-send" onClick={askRelease} disabled={saving}
+                            title={`Save, then send the ${typeLabel} to the vessels`} />
+                    )}
                 </div>
             </div>
+
+            {confirmRelease && (
+                <Dialog header={`Release this ${typeLabel}?`} visible onHide={() => setConfirmRelease(false)} className="feature-dialog"
+                    style={{ width: '520px', maxWidth: '96vw' }} draggable={false}
+                    footer={(
+                        <div className="feature-dialog-footer">
+                            <Button type="button" label="Back" text onClick={() => setConfirmRelease(false)} />
+                            <Button type="button" label="Save and release" icon="pi pi-send"
+                                onClick={() => { setConfirmRelease(false); submitForm(true); }} />
+                        </div>
+                    )}>
+                    <div className="release-note">
+                        <p>The {typeLabel} is saved, then released:</p>
+                        <ul>
+                            <li>its status becomes <strong>Active</strong> and today becomes its released date;</li>
+                            <li>the selected vessels get it with the next sync and see it in their inbox;</li>
+                            <li>the crew must acknowledge it within the set number of days;</li>
+                            <li>manuals it amends show it as an open amendment.</li>
+                        </ul>
+                        <p className="release-warn"><i className="pi pi-info-circle" aria-hidden="true" /> It can no longer go back to draft; after this it can only be cancelled or superseded.</p>
+                    </div>
+                </Dialog>
+            )}
         </form>
     );
 };

@@ -1,0 +1,40 @@
+/* Vessel sync page: Status / Sync history tabs. */
+.vessel-sync-page {
+  .vs-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border-color, #dfe3e8);
+  }
+
+  .vs-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    margin-bottom: -1px;
+    padding: 0 16px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--text-secondary, #4b5563);
+    font: inherit;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+
+    i { font-size: 0.9rem; }
+    &:hover { color: var(--primary-color, #0072bc); }
+    &:focus-visible { outline: 2px solid var(--primary-color, #0072bc); outline-offset: -2px; }
+    &.active { border-bottom-color: var(--primary-color, #0072bc); color: var(--primary-color, #0072bc); }
+  }
+
+  /* The report needs a fixed height so its table scrolls inside the page. */
+  .vs-history {
+    display: flex;
+    height: calc(100vh - 170px);
+    min-height: 460px;
+
+    .rp-report { flex: 1; }
+  }
+}

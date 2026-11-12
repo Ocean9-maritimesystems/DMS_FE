@@ -3,7 +3,7 @@ import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { login as loginAction, setShowAlert } from '../store/slices/userSlice';
 import Login from './Login';
-import authService from '../services/authService';
+import authService, { LoginError } from '../services/authService';
 
 /** Login page. A successful login stores the token; App.tsx then shows the dashboard. */
 const LandingPage: React.FC = () => {
@@ -18,8 +18,9 @@ const LandingPage: React.FC = () => {
             const user = await authService.login(userId, password);
             dispatch(loginAction({ id: user.userId, name: user.userName, email: '' }));
             navigate('/dashboard', { replace: true });
-        } catch (error: any) {
-            setMessage(error?.response ? 'Invalid user ID or password.' : 'Cannot reach the server. Please try again.');
+        } catch (error) {
+            // Wrong password, server down and "cannot reach" each get their own message.
+            setMessage(error instanceof LoginError ? error.message : 'Something went wrong. Please try again.');
             dispatch(setShowAlert(true));
         }
     };

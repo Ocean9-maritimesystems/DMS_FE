@@ -14,7 +14,7 @@ const STORAGE_KEY = 'manual-link-view';
 const CHANGED_EVENT = 'manual-link-view-changed';
 
 export const DEFAULT_MANUAL_LINK_VIEW: ManualLinkView =
-    (process.env.REACT_APP_MANUAL_LINK_VIEW || '').toLowerCase() === 'grid' ? 'grid' : 'tree';
+    (import.meta.env.REACT_APP_MANUAL_LINK_VIEW || '').toLowerCase() === 'grid' ? 'grid' : 'tree';
 
 export const MANUAL_LINK_VIEW_OPTIONS: { label: string; value: ManualLinkView }[] = [
     { label: 'Filtered tree', value: 'tree' },

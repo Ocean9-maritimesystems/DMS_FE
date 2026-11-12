@@ -25,21 +25,36 @@ const formatDate = (dateStr?: string) => {
     }
 };
 
-const normalizeLogResponse = (response: any): CircularsLogData[] => {
+type Fields = Record<string, unknown>;
+
+/** The first of these fields that has a value, as text (the API has sent the log under several spellings). */
+const textOf = (item: Fields, ...names: string[]): string | undefined => {
+    for (const name of names) {
+        const value = item[name];
+        if (value != null) return String(value);
+    }
+    return undefined;
+};
+
+const normalizeLogResponse = (response: unknown): CircularsLogData[] => {
+    const wrapper = (response && typeof response === 'object' ? response : {}) as Fields;
     const records = Array.isArray(response)
         ? response
-        : response?.data ?? response?.items ?? response?.results ?? response?.$values ?? [];
+        : wrapper.data ?? wrapper.items ?? wrapper.results ?? wrapper.$values ?? [];
 
     if (!Array.isArray(records)) return [];
 
-    return records.map((item: any) => ({
-        Logdate: item.Logdate ?? item.LogDate ?? item.logdate ?? item.logDate,
-        UserId: item.UserId ?? item.UserID ?? item.userId ?? item.userID,
-        UserName: item.UserName ?? item.username ?? item.userName,
-        UserRole: item.UserRole ?? item.userRole,
-        Activity: item.Activity ?? item.activity,
-        Remarks: item.Remarks ?? item.remarks ?? item.Remark ?? item.remark
-    }));
+    return (records as unknown[]).map((entry) => {
+        const item = (entry && typeof entry === 'object' ? entry : {}) as Fields;
+        return {
+            Logdate: textOf(item, 'Logdate', 'LogDate', 'logdate', 'logDate'),
+            UserId: textOf(item, 'UserId', 'UserID', 'userId', 'userID'),
+            UserName: textOf(item, 'UserName', 'username', 'userName'),
+            UserRole: textOf(item, 'UserRole', 'userRole'),
+            Activity: textOf(item, 'Activity', 'activity'),
+            Remarks: textOf(item, 'Remarks', 'remarks', 'Remark', 'remark'),
+        };
+    });
 };
 
 const CircularsLogDetails: React.FC<CircularsLogProps> = ({ selectedCIR_MasterID }) => {
@@ -50,8 +65,8 @@ const CircularsLogDetails: React.FC<CircularsLogProps> = ({ selectedCIR_MasterID
         let mounted = true;
         setLoading(true);
 
-        dmsLifecycleService.getApiCall(`circular/GetCircularLogs?ciR_MasterID=${selectedCIR_MasterID}`)
-            .then((data: any) => {
+        dmsLifecycleService.getApiCall<unknown>(`circular/GetCircularLogs?ciR_MasterID=${selectedCIR_MasterID}`)
+            .then((data) => {
                 if (mounted) setLogDetails(normalizeLogResponse(data));
             })
             .catch(() => {

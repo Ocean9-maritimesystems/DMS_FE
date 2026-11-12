@@ -1,46 +1,64 @@
-# Getting Started with Create React App
+# DMS – office web app (DMS_FE)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+React 19 + TypeScript front end for the Document Management System: manuals, circulars and alerts,
+other documents, vessel sync, pending acknowledgements and search. It talks to the DMS_API project.
 
-## Available Scripts
+Built with [Vite](https://vite.dev/) (replaces Create React App) and tested with [Vitest](https://vitest.dev/).
 
-In the project directory, you can run:
+## Requirements
 
-### `npm start`
+* Node.js 18.18 or later (20 LTS recommended)
+* The DMS API running and allowing this app's address in `AllowedCorsOrigin` (default `http://localhost:3000`)
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+## First run
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+```bash
+cp .env.example .env.local     # then set REACT_APP_API_URL, e.g. https://localhost:7151/api
+npm install
+npm start                      # http://localhost:3000
+```
 
-### `npm test`
+## Scripts
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+| Command | What it does |
+| --- | --- |
+| `npm start` / `npm run dev` | Development server on port 3000, reloads on save |
+| `npm run build` | Type check, then production build into `build/` (deploy that folder) |
+| `npm run preview` | Serves the production build locally |
+| `npm test` | Runs the tests once (`npm run test:watch` keeps watching) |
+| `npm run typecheck` | TypeScript check only |
+| `npm run lint` | ESLint (errors fail; warnings mark older code still to tidy) |
 
-### `npm run build`
+GitHub Actions (`.github/workflows/build.yml`) runs type check, lint, tests and build on every push and pull request.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Settings
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Set in `.env.local` (or the build server's environment) before building – see `.env.example`.
+Vite reads variables starting with `REACT_APP_`, so the names did not change with the move from Create React App.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+| Variable | Meaning |
+| --- | --- |
+| `REACT_APP_API_URL` | API base URL, e.g. `https://dms.example.com/api` (default `/api`) |
+| `REACT_APP_ENV_LABEL` | Label next to the user name, e.g. `QA` (empty in production) |
+| `REACT_APP_COMPANY` | Company name in the header and on the login page |
+| `REACT_APP_MANUAL_LINK_VIEW` | `tree` or `grid`: how manual links from the dashboard open |
 
-### `npm run eject`
+## Deploying
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+`npm run build` writes the site to `build/`. Serve it as a single-page app: every path that is not a file
+(e.g. `/manuals`, `/pending`) must return `build/index.html`. On IIS use a URL Rewrite rule to `/index.html`.
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Layout
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+```
+src/
+  components/        screens (Dashboard, Manuals, Circulars, Search, PendingAck, Account, ...)
+  config/            settings from .env, item links
+  services/          API calls (DMSLifecycleService), login (authService), toasts (notify)
+  store/             Redux store (the manual selected in the tree)
+  types/api.ts       shapes of API responses used by the newer screens
+public/              static files served as-is (logo, pdf.js worker, icons)
+index.html           page shell (Vite entry)
+```
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+`public/index.html` is the old Create React App page and is no longer used; it can be deleted.

@@ -1,46 +1,18 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import type { TreeNode } from 'primereact/treenode';
 
+/** App-wide state. Only what screens actually share lives here (the manual selected in the Manuals tree). */
 interface AppState {
     loading: boolean;
     error: string | null;
-    manualTreeData: any;
-    manualID: number;
-    treeData: any;
-    prevSectionVesrionId: number;
-    secVerId_FL: string | null;
-    parentId_FL: string | null;
-    formatedDataURS: any;
-    unReadSectionList: any;
-    enableTreeCM: boolean;
-    enableSectionCM: boolean;
-    triggerID_CM: string | null;
-    parentIdList: any[];
-    istoExpandTree: boolean;
-    userInfo: any;
-    isUserReqdToReadManuals: boolean;
-
-    selectedManualNodeObj: any | null;
+    /** The manual selected in the Manuals tree (node data from api/Manuals/GetTreeViewManualList). */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    selectedManualNodeObj: (TreeNode & { data?: any }) | null;
 }
 
 const initialState: AppState = {
     loading: false,
     error: null,
-    manualTreeData: [],
-    manualID: -1,
-    treeData: [],
-    prevSectionVesrionId: 1,
-    secVerId_FL: null,
-    parentId_FL: null,
-    formatedDataURS: null,
-    unReadSectionList: null,
-    enableTreeCM: false,
-    enableSectionCM: false,
-    triggerID_CM: null,
-    parentIdList: [],
-    istoExpandTree: false,
-    userInfo: null,
-    isUserReqdToReadManuals: false,
-
     selectedManualNodeObj: null,
 };
 
@@ -48,6 +20,7 @@ const appSlice = createSlice({
     name: 'appInfo',
     initialState,
     reducers: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setSelectedManualNodeObj(state, action: PayloadAction<any | null>) {
             state.selectedManualNodeObj = action.payload;
         },

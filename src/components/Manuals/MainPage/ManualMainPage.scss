@@ -123,13 +123,16 @@
           
           .p-treenode-label {
             color: inherit !important;
-            font-size: 1.1rem;
+            font-size: 0.9rem;
             font-weight: 500;
+            line-height: 1.3;
           }
           
           .p-tree-toggler {
             color: var(--text-primary) !important;
-            margin-right: 0.5rem !important;
+            margin-right: 0.25rem !important;
+            width: 1.5rem;
+            height: 1.5rem;
             
             &:hover {
               color: white !important;
@@ -139,6 +142,7 @@
           .p-treenode-icon {
             color: var(--text-secondary) !important;
             margin-right: 0.25rem;
+            font-size: 0.85rem;
             
             &:hover {
               color: white !important;
@@ -765,6 +769,56 @@
   height: 100%;
   min-height: 0;
 
+  .link-list-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 10px;
+    border-bottom: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--primary-color) 5%, var(--bg-secondary));
+
+    h2 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: 0.95rem;
+      font-weight: 650;
+    }
+
+    p {
+      margin: 2px 0 0;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+    }
+  }
+
+  .link-list-heading-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--warning-color, #d97706) 14%, transparent);
+    color: var(--warning-color, #d97706);
+  }
+
+  .link-list-heading-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    margin-left: auto;
+    padding: 0 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+
   .link-list-search {
     display: flex;
     align-items: center;
@@ -799,12 +853,28 @@
     min-height: 0;
     font-size: 0.875rem;
 
-    .p-datatable-thead > tr > th { padding: 6px 8px; }
-    .p-datatable-tbody > tr > td { padding: 6px 8px; vertical-align: top; }
+    .p-datatable-thead > tr > th {
+      padding: 8px;
+      color: var(--text-secondary);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .p-datatable-tbody > tr > td { padding: 9px 8px; vertical-align: middle; }
     .p-datatable-tbody > tr { cursor: pointer; }
+    .p-datatable-tbody > tr:hover > td { background: color-mix(in srgb, var(--primary-color) 5%, var(--bg-secondary)); }
+    .p-datatable-tbody > tr.p-highlight > td { background: color-mix(in srgb, var(--primary-color) 9%, var(--bg-secondary)); }
   }
 
-  .link-list-manual { display: flex; flex-direction: column; gap: 2px; }
-  .link-list-name { font-weight: 600; line-height: 1.3; }
+  .link-list-manual { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .link-list-name { overflow-wrap: anywhere; font-weight: 600; line-height: 1.3; }
   .link-list-category { font-size: 0.75rem; color: var(--text-secondary, #5b6573); }
+  .link-list-remove { width: 32px; height: 32px; }
+}
+
+@media (max-width: 640px) {
+  .manual-link-list .link-list-heading { padding: 10px 8px; }
+  .manual-link-list .link-list-heading p { max-width: 220px; }
 }

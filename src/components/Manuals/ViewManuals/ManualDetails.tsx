@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import JoditEditor from 'jodit-react';
+import { sanitizeHtml } from '../../utils/sanitize';
 import dmsLifecycleService from '../../../services/DMSLifecycleService';
 import './ManualDetails.scss';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -32,15 +33,16 @@ export type ManualDetailsProp = {
     dM_ManualVersionID: string;
 };
 
-const ManualDetails: React.FC<ManualDetailsProps> = ({ dmManualVersionID, closeForm }) => {
+// closeForm: the dialog around the details closes itself (its X), nothing to close from here.
+const ManualDetails: React.FC<ManualDetailsProps> = ({ dmManualVersionID }) => {
    const [manualData, setManualData] = useState<ManualDetailsProp>();
    const [loading, setLoading] = useState(true);
    const { theme } = useTheme(); 
     
     useEffect(() => {
-        dmsLifecycleService.getApiCall(`DMS/GetManualDetailsByVersionId/${dmManualVersionID}`)
-                .then((data: any) => {
-                    setManualData(data);
+        dmsLifecycleService.getApiCall<ManualDetailsProp | null>(`Manuals/GetManualDetailsByVersionId/${dmManualVersionID}`)
+                .then((data) => {
+                    setManualData(data ?? undefined);
                     setLoading(false);
                 })
                 .catch(() => {
@@ -155,7 +157,7 @@ const ManualDetails: React.FC<ManualDetailsProps> = ({ dmManualVersionID, closeF
                 </div>
                 <div className="manual-details-contents">
                       <JoditEditor
-                        value={manualData?.textContents ?? ""}
+                        value={sanitizeHtml(manualData?.textContents)}
                         config={{
                             readonly: true,
                             toolbar: false,

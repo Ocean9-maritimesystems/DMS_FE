@@ -25,25 +25,33 @@ axiosInstance.interceptors.response.use(
     }
 );
 
+/**
+ * The result type defaults to `any` for the older screens; new code passes the response type,
+ * e.g. getApiCall<SearchHit[]>('Search?q=...').
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Json = any;
+
 const dmsLifecycleService = {
-    getApiCall: async (endpoint: string) => dmsLifecycleService.apiCall(endpoint, 'get'),
+    getApiCall: async <T = Json>(endpoint: string): Promise<T> => dmsLifecycleService.apiCall<T>(endpoint, 'get'),
 
-    deleteApiCall: async (endpoint: string, data?: any) => dmsLifecycleService.apiCall(endpoint, 'delete', data),
+    deleteApiCall: async <T = Json>(endpoint: string, data?: unknown): Promise<T> =>
+        dmsLifecycleService.apiCall<T>(endpoint, 'delete', data),
 
-    postApiCall: async (endpoint: string, data?: any) =>
-        dmsLifecycleService.apiCall(endpoint, 'post', data, { headers: { 'Content-Type': 'application/json' } }),
+    postApiCall: async <T = Json>(endpoint: string, data?: unknown): Promise<T> =>
+        dmsLifecycleService.apiCall<T>(endpoint, 'post', data, { headers: { 'Content-Type': 'application/json' } }),
 
-    putApiCall: async (endpoint: string, data?: any) =>
-        dmsLifecycleService.apiCall(endpoint, 'put', data, { headers: { 'Content-Type': 'application/json' } }),
+    putApiCall: async <T = Json>(endpoint: string, data?: unknown): Promise<T> =>
+        dmsLifecycleService.apiCall<T>(endpoint, 'put', data, { headers: { 'Content-Type': 'application/json' } }),
 
-    apiCall: async (
+    apiCall: async <T = Json>(
         endpoint: string,
         method: 'get' | 'post' | 'put' | 'delete' = 'get',
-        data?: any,
+        data?: unknown,
         config?: AxiosRequestConfig
-    ) => {
+    ): Promise<T> => {
         const url = `${API_URL}/${endpoint}`;
-        if (method === 'get' && data) config = { ...config, params: data };
+        if (method === 'get' && data) config = { ...config, params: data as Record<string, unknown> };
 
         try {
             let response;
@@ -51,7 +59,7 @@ const dmsLifecycleService = {
             else if (method === 'delete') response = await axiosInstance.delete(url, { ...config, data });
             else if (method === 'put') response = await axiosInstance.put(url, data, config);
             else response = await axiosInstance.post(url, data, config);
-            return response.data;
+            return response.data as T;
         } catch (error) {
             console.error(`Error in API call to ${endpoint}:`, error);
             throw error;
@@ -59,9 +67,19 @@ const dmsLifecycleService = {
     },
 };
 
+/** A file from the API (GET), with the name the server gives it in Content-Disposition. */
+export const getFile = async (endpoint: string): Promise<{ blob: Blob; fileName: string | null }> => {
+    const response = await axiosInstance.get<Blob>(`${API_URL}/${endpoint}`, { responseType: 'blob' });
+    const disposition = String(response.headers['content-disposition'] ?? '');
+    const star = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+    const plain = /filename="?([^";]+)"?/i.exec(disposition);
+    const fileName = star ? decodeURIComponent(star[1]) : plain ? plain[1] : null;
+    return { blob: response.data, fileName };
+};
+
 /** A readable message from an API error (ProblemDetails, the API's error JSON, or plain text). */
 export const errorMessage = (error: unknown, fallback = 'Something went wrong.'): string => {
-    const e = error as AxiosError<any>;
+    const e = error as AxiosError<Json>;
     const data = e?.response?.data;
     if (!e?.response) return 'Cannot reach the server. Check your connection.';
     if (typeof data === 'string' && data.trim()) return data;
@@ -72,7 +90,9 @@ export const errorMessage = (error: unknown, fallback = 'Something went wrong.')
             .slice(0, 5);
         if (details.length) return details.join('\n');
     }
-    return data?.MetaData?.ErrorMessage || data?.metaData?.errorMessage || data?.detail || data?.title || data?.message || data?.error || fallback;
+    // The API's error handler sends { MetaData: { error_message: "..." } }.
+    return data?.MetaData?.error_message || data?.metaData?.error_message
+        || data?.MetaData?.ErrorMessage || data?.metaData?.errorMessage || data?.detail || data?.title || data?.message || data?.error || fallback;
 };
 
 export default dmsLifecycleService;

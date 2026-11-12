@@ -128,3 +128,615 @@
       transform: translateY(-1px);
     }
  }
+/* ===================================================================================================
+   Other Documents tab layout: top bar, vessel navigator on the left, the vessel's documents on the right.
+   Colours come from the theme variables so every theme (and dark mode) works.
+   =================================================================================================== */
+.other-documents-dashboard {
+    --od-gap: 14px;
+    --od-radius: 10px;
+    --od-height: calc(100vh - 160px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--od-gap);
+
+    .od-topbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px 16px;
+        padding: 12px 16px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--od-radius);
+
+        h2 { margin: 0; font-size: 1.15rem; font-weight: 650; color: var(--text-primary); }
+        .od-topbar__title > span { font-size: 0.85rem; color: var(--text-muted); }
+    }
+
+    .od-topbar__title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+    .od-seg { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+
+    .od-layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: var(--od-gap);
+        min-height: var(--od-height);
+
+        @media (max-width: 900px) { grid-template-columns: 1fr; }
+    }
+
+    /* ---- Vessel navigator ---- */
+    .od-vessels {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+        max-height: var(--od-height);
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--od-radius);
+
+        @media (max-width: 900px) { max-height: 320px; }
+    }
+
+    .od-vessels__head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        h3 { margin: 0; font-size: 0.95rem; font-weight: 650; color: var(--text-primary); }
+    }
+
+    .od-count {
+        min-width: 24px;
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+        color: var(--primary-color);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-align: center;
+    }
+
+    .od-vessels__search { width: 100%; input { width: 100%; } }
+    .od-vessels__type { width: 100%; }
+
+    .od-vessels__list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        border-top: 1px solid var(--border-color);
+        padding-top: 6px;
+    }
+
+    .od-vessels__empty { padding: 24px 8px; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
+
+    .od-vessel {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        margin-bottom: 2px;
+        border-radius: 8px;
+        border-left: 3px solid transparent;
+        cursor: pointer;
+        color: var(--text-primary);
+
+        &:hover { background: color-mix(in srgb, var(--primary-color) 7%, transparent); }
+        &:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
+        &.is-selected {
+            background: color-mix(in srgb, var(--primary-color) 13%, transparent);
+            border-left-color: var(--primary-color);
+            .od-vessel__name { font-weight: 650; }
+        }
+    }
+
+    .od-vessel__icon { color: var(--primary-color); font-size: 0.9rem; }
+    .od-vessel__text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+    .od-vessel__name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.9rem; }
+    .od-vessel__meta { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .od-vessel__chev { color: var(--primary-color); font-size: 0.75rem; }
+
+    /* "All vessels": the fleet-wide documents register and certificate expiry */
+    .od-vessel--all {
+        margin-bottom: 6px;
+        border-bottom: 1px dashed var(--border-color);
+        border-radius: 8px 8px 0 0;
+
+        .od-vessel__name { font-weight: 600; }
+    }
+
+    /* ---- Right-hand panel ---- */
+    .od-panel {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: var(--od-height);
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--od-radius);
+        overflow: hidden;
+    }
+
+    .od-panel--full { padding: 12px; }
+
+    /* All vessels: the reports fill the panel */
+    .od-panel--reports {
+        padding: 12px;
+        background: var(--bg-primary);
+
+        .rp-tabbed { flex: 1; min-height: 0; }
+    }
+
+    .od-panel__body { flex: 1; min-height: 0; padding: 12px; overflow: auto; }
+
+    .od-vessel-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px 16px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border-color);
+        background: color-mix(in srgb, var(--primary-color) 5%, var(--bg-secondary));
+
+        h3 { margin: 0; font-size: 1.1rem; font-weight: 650; color: var(--text-primary); }
+        .od-vessel-head__title span { font-size: 0.8rem; color: var(--text-muted); }
+    }
+
+    .od-vessel-head__title { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+    .od-vessel-head__icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--primary-color);
+        color: #fff;
+        flex-shrink: 0;
+    }
+
+    .od-empty {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 32px 16px;
+        text-align: center;
+        color: var(--text-muted);
+
+        h3 { margin: 6px 0 0; font-size: 1.05rem; color: var(--text-primary); }
+        p { margin: 0; max-width: 420px; font-size: 0.88rem; }
+    }
+
+    .od-empty__icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+        color: var(--primary-color);
+        font-size: 1.6rem;
+    }
+
+    /* The folder view inside the tab: tree and documents side by side, each scrolling on its own. */
+    .document-folders-embedded {
+        height: 100%;
+
+        .folders-layout {
+            grid-template-columns: minmax(230px, 280px) minmax(0, 1fr);
+            min-height: calc(var(--od-height) - 100px);
+
+            @media (max-width: 1100px) { grid-template-columns: 1fr; }
+        }
+
+        .feature-card { box-shadow: none; }
+    }
+}
+
+/* ===================================================================================================
+   One vessel's documents (VesselDocuments.tsx): header with actions, folders on the left, documents on the right.
+   =================================================================================================== */
+.other-documents-dashboard {
+    .od-empty__points {
+        list-style: none;
+        margin: 14px 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        text-align: left;
+        font-size: 0.85rem;
+        li { display: flex; align-items: center; gap: 8px; }
+        i { color: var(--primary-color); }
+    }
+
+    .vd { display: flex; flex-direction: column; height: 100%; min-height: var(--od-height); }
+
+    .vd-head {
+        display: grid;
+        grid-template-columns: minmax(200px, auto) 1fr auto;
+        align-items: center;
+        gap: 10px 20px;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--border-color);
+        background: color-mix(in srgb, var(--primary-color) 5%, var(--bg-secondary));
+
+        @media (max-width: 1100px) { grid-template-columns: 1fr; }
+
+        h3 { margin: 0; font-size: 1.15rem; font-weight: 650; color: var(--text-primary); }
+    }
+
+    .vd-head__title { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .vd-head__title > div > span { font-size: 0.8rem; color: var(--text-muted); }
+
+    .vd-head__icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--primary-color);
+        color: #fff !important;
+        font-size: 1rem !important;
+        flex-shrink: 0;
+    }
+
+    .vd-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 18px;
+        span { font-size: 0.82rem; color: var(--text-muted); white-space: nowrap; }
+        strong { color: var(--text-primary); font-size: 0.95rem; margin-right: 3px; }
+    }
+
+    .vd-head__actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
+    .vd-body {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr);
+
+        @media (max-width: 1000px) { grid-template-columns: 1fr; }
+    }
+
+    /* ---- Folder list ---- */
+    .vd-folders {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 12px 10px;
+        border-right: 1px solid var(--border-color);
+        overflow-y: auto;
+        max-height: calc(var(--od-height) - 72px);
+
+        @media (max-width: 1000px) { border-right: none; border-bottom: 1px solid var(--border-color); max-height: 260px; }
+    }
+
+    .vd-folders__title {
+        padding: 0 10px 6px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+    }
+
+    .vd-folders__sep { height: 1px; margin: 6px 4px; background: var(--border-color); }
+
+    .vd-folders__empty {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+        padding: 6px 10px;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+    }
+
+    .vd-folder-row {
+        display: flex;
+        align-items: center;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        background: transparent;
+        transition: background-color 0.15s ease, border-color 0.15s ease;
+
+        &:not(.is-selected) { background: transparent; }
+        &.is-selected {
+            border-color: color-mix(in srgb, var(--primary-color) 18%, transparent);
+            background: color-mix(in srgb, var(--primary-color) 10%, var(--bg-secondary));
+            box-shadow: inset 3px 0 var(--primary-color);
+        }
+    }
+
+    .vd-folder {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 7px 10px;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text-primary);
+        font: inherit;
+        font-size: 0.9rem;
+        text-align: left;
+        cursor: pointer;
+
+        i { color: var(--primary-color); }
+        &:hover { background: color-mix(in srgb, var(--primary-color) 7%, transparent); }
+        &:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
+        &.is-selected {
+            background: transparent;
+            color: var(--text-primary);
+            font-weight: 650;
+        }
+    }
+
+    .vd-folder-row .vd-folder.is-selected,
+    .vd-folder-row:not(.is-selected) .vd-folder { background: transparent; }
+
+    .vd-folder__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .vd-folder__count { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; }
+    .vd-folder__tag {
+        font-size: 0.65rem;
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+        color: var(--primary-color);
+        white-space: nowrap;
+    }
+    .vd-folder__tools { display: inline-flex; padding-right: 2px; }
+
+    /* ---- Documents ---- */
+    .vd-docs { display: flex; flex-direction: column; min-width: 0; padding: 12px 16px; overflow: auto; }
+
+    .vd-docs__bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 12px;
+        margin-bottom: 10px;
+        h4 { margin: 0; font-size: 1rem; font-weight: 650; color: var(--text-primary); }
+    }
+
+    .vd-spacer { flex: 1; }
+    .vd-muted { color: var(--text-muted); }
+    .vd-block { display: block; }
+    .vd-row-tools { display: inline-flex; }
+
+    .vd-legend {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        margin: 10px 0 0;
+        font-size: 0.78rem;
+        color: var(--text-muted);
+    }
+}
+
+/* Dialog parts (dialogs render outside the tab). */
+.vd-note {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--primary-color, #0072bc) 10%, transparent);
+    font-size: 0.88rem;
+    i { color: var(--primary-color, #0072bc); }
+}
+
+.vd-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.vd-file {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color, #dbe3ec);
+    border-radius: 8px;
+    background: var(--bg-secondary, #fff);
+
+    & + .vd-file { margin-top: 8px; }
+    > .p-button-link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    > .vd-muted { flex: 0 0 auto; margin-left: auto; }
+}
+.vd-muted { color: var(--text-muted, #6b7280); }
+.vd-move-current-folder {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color, #dbe3ec);
+    border-radius: 8px;
+    background: var(--bg-primary, #f8fafc);
+    color: var(--text-primary, #1e293b);
+    overflow-wrap: anywhere;
+
+    i { color: var(--primary-color, #0072bc); }
+}
+
+/* Fixes after preview: folder buttons keep their height, search icons sit inside the box, a calmer table. */
+.other-documents-dashboard {
+    .vd-folders > .vd-folder, .vd-folder-row { flex: none; }
+
+    .od-search {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        min-width: 200px;
+        i { position: absolute; left: 11px; color: var(--text-muted); font-size: 0.85rem; pointer-events: none; }
+        input { width: 100%; padding-left: 32px; height: 36px; font-size: 0.88rem; }
+    }
+
+    .od-vessels__search { display: flex; }
+
+    .vd-source .p-button { padding: 0.4rem 0.75rem; font-size: 0.82rem; }
+
+    .vd-table {
+        .p-datatable-thead > tr > th {
+            padding: 8px 10px;
+            font-size: 0.78rem;
+            font-weight: 650;
+            color: var(--text-muted);
+            background: transparent;
+
+            .p-sortable-column-icon {
+                margin-left: 0.35rem;
+                color: var(--text-muted);
+                font-size: 0.7rem;
+                opacity: 0.3;
+                transition: color 0.15s ease, opacity 0.15s ease;
+            }
+
+            &:hover .p-sortable-column-icon { opacity: 0.65; }
+
+            &.p-highlight .p-sortable-column-icon {
+                color: var(--primary-color);
+                opacity: 1;
+            }
+        }
+        .p-datatable-tbody > tr > td { padding: 8px 10px; font-size: 0.88rem; vertical-align: middle; }
+        .p-button.p-button-link { font-size: 0.88rem; white-space: nowrap; }
+    }
+
+    .vd-ellipsis { display: block; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+/* The app's theme leaves dialog content without padding: give these dialogs their own. */
+.p-dialog.vd-dialog {
+    .p-dialog-content { padding: 1rem 1.25rem 1.25rem; }
+    .feature-form { gap: 14px 16px; }
+    .feature-form label { margin-bottom: 0; }
+    .p-inputtext:not(.p-dropdown-label), .p-inputtextarea { padding: 0.55rem 0.75rem; min-height: 2.6rem; width: 100%; }
+    .p-dropdown { width: 100%; }
+    .vd-dialog-actions .p-button { padding: 0.5rem 1rem; white-space: nowrap; }
+    .p-button .p-button-icon-left { margin-right: 0.5rem; }
+}
+
+.p-confirm-dialog.vd-move-confirm-dialog {
+    width: min(34rem, calc(100vw - 2rem));
+    max-width: calc(100vw - 2rem);
+    overflow: hidden;
+    border: 1px solid var(--border-color, #dbe3ec);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.2);
+
+    .p-dialog-header {
+        padding: 1rem 1.25rem 0.75rem;
+        border-bottom: 1px solid var(--border-color, #dbe3ec);
+        background: var(--bg-secondary, #fff);
+    }
+
+    .p-dialog-content {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 1rem 1.25rem;
+        background: var(--bg-secondary, #fff);
+    }
+
+    .p-confirm-dialog-icon {
+        flex: 0 0 auto;
+        margin-top: 0.1rem;
+        color: var(--warning-color, #d97706);
+    }
+
+    .p-confirm-dialog-message {
+        flex: 1 1 auto;
+        min-width: 0;
+        margin: 0;
+    }
+
+    .vd-move-confirm-message {
+        display: grid;
+        gap: 0.5rem;
+        min-width: 0;
+        line-height: 1.45;
+    }
+
+    .vd-move-confirm-message__title {
+        color: var(--text-primary, #1e293b);
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+
+    .vd-move-confirm-message__route {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.35rem 0.55rem;
+        color: var(--text-secondary, #475569);
+        font-size: 0.86rem;
+        overflow-wrap: anywhere;
+
+        > span { min-width: 0; }
+        strong { color: var(--text-primary, #1e293b); }
+        > .pi { color: var(--primary-color, #0072bc); }
+    }
+
+    .p-dialog-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        padding: 0.75rem 1.25rem;
+        border-top: 1px solid var(--border-color, #dbe3ec);
+        background: var(--bg-primary, #f8fafc);
+
+        .p-button { margin: 0; }
+    }
+}
+
+.other-documents-dashboard .vd-head__actions .p-button { padding: 0.5rem 1rem; font-size: 0.9rem; white-space: nowrap; }
+.other-documents-dashboard .vd-first-folder {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 10px;
+    font-size: 0.85rem; font-weight: 600; line-height: 1.2; color: var(--primary-color, #1d4ed8);
+    background: transparent; border: 1px dashed currentColor; border-radius: 6px; cursor: pointer;
+    i { font-size: 0.85rem; }
+    &:hover { background: rgba(29, 78, 216, 0.06); }
+}
+.other-documents-dashboard .vd-head__actions .p-button .p-button-icon-left { margin-right: 0.5rem; }
+
+/* "New folder" under the folder list. */
+.other-documents-dashboard .vd-folders__add {
+    flex: none;
+    align-self: stretch;
+    justify-content: center;
+    gap: 6px;
+    min-height: 34px;
+    margin: 10px 4px 0;
+    padding: 0 12px;
+    font-size: 0.88rem;
+}
+
+/* New document: "Office only" / "Send to <vessel>". */
+.vd-where {
+    display: flex;
+    .p-button { flex: 1; justify-content: center; min-height: 38px; padding: 0 12px; font-weight: 500; }
+}
+.vd-dialog .field .vd-note { margin: 6px 0 0; }
+.vd-note.is-send {
+    background: color-mix(in srgb, #16a34a 12%, transparent);
+    i { color: #15803d; }
+}

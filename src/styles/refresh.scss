@@ -518,3 +518,38 @@ main.dashboard-main {
     font-size: 0.85rem;
   }
 }
+
+/* Sorted table columns: a light tint instead of a solid or white header, in every table and in both themes.
+   Sort icons are small and faint (light view); the sorted column's icon is in the primary colour. */
+.p-datatable .p-datatable-thead > tr > th.p-sortable-column {
+  .p-sortable-column-icon {
+    width: 0.7rem !important;
+    height: 0.7rem !important;
+    margin-left: 0.35rem !important;
+    font-size: 0.7rem !important;
+    color: var(--text-muted, #94a3b8) !important;
+    opacity: 0.45;
+    vertical-align: middle;
+    transition: opacity 0.15s;
+  }
+
+  &:not(.p-highlight):not(.p-sortable-disabled):hover {
+    background: color-mix(in srgb, var(--primary-color) 5%, var(--bg-secondary)) !important;
+    color: var(--text-primary) !important;
+
+    .p-sortable-column-icon { opacity: 0.8; }
+  }
+
+  &.p-highlight,
+  &.p-highlight:not(.p-sortable-disabled):hover {
+    background: color-mix(in srgb, var(--primary-color) 9%, var(--bg-secondary)) !important;
+    color: var(--primary-color) !important;
+
+    .p-sortable-column-icon { color: var(--primary-color) !important; opacity: 0.9; }
+  }
+
+  .p-sortable-column-badge {
+    background: color-mix(in srgb, var(--primary-color) 18%, var(--bg-secondary)) !important;
+    color: var(--primary-color) !important;
+  }
+}

@@ -11,7 +11,8 @@ import {
     BarElement,
     LineElement,
     PointElement,
-    Plugin
+    Plugin,
+    type ChartData,
 } from 'chart.js';
 import { SelectButton } from 'primereact/selectbutton';
 import dmsLifecycleService from '../../../services/DMSLifecycleService';
@@ -19,13 +20,21 @@ import './CircularsChart.scss';
 
 ChartJS.register(ArcElement, Tooltip, Legend, Title, CategoryScale, LinearScale, BarElement, LineElement, PointElement);
 
+type ChartKind = 'doughnut' | 'pie' | 'bar' | 'line' | 'polarArea';
+
+/** api/Circular/GetCIR_CategoryChartData: one row per category. */
+interface CategoryCount {
+    category?: string;
+    total?: number;
+}
+
 interface CircularsChartProps {
     circularType: string;
 }
 
 const CircularsChart: React.FC<CircularsChartProps> = ({ circularType }) => {
     const [chartType, setChartType] = useState('bar');
-    const [chartData, setChartData] = useState<any>(null);
+    const [chartData, setChartData] = useState<ChartData<ChartKind, number[], string> | null>(null);
     const [loading, setLoading] = useState(true);
 
     const chartTypeOptions = useMemo(() => [
@@ -37,11 +46,11 @@ const CircularsChart: React.FC<CircularsChartProps> = ({ circularType }) => {
     const fetchChartData = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await dmsLifecycleService.getApiCall(`Circular/GetCIR_CategoryChartData?circularType=${circularType}`);
+            const data = await dmsLifecycleService.getApiCall<CategoryCount[] | { category?: string[]; total?: number[] } | null>(`Circular/GetCIR_CategoryChartData?circularType=${circularType}`);
             
             if (data && Array.isArray(data) && data.length > 0) {
-                const labels = data.map((item: any) => item.category || '');
-                const values = data.map((item: any) => item.total || 0);
+                const labels = data.map((item) => item.category || '');
+                const values = data.map((item) => item.total || 0);
                 
                 setChartData({
                     labels: labels,
@@ -77,7 +86,7 @@ const CircularsChart: React.FC<CircularsChartProps> = ({ circularType }) => {
                         },
                     ],
                 });
-            } else if (data && typeof data === 'object' && data.category && data.total) {
+            } else if (data && !Array.isArray(data) && data.category && data.total) {
                 // Handle object response with category and total arrays
                 setChartData({
                     labels: data.category || [],
@@ -155,17 +164,18 @@ const CircularsChart: React.FC<CircularsChartProps> = ({ circularType }) => {
 
     const centerTextPlugin: Plugin = useMemo(() => ({
         id: 'centerText',
-        afterDatasetsDraw(chart: any) {
+        afterDatasetsDraw(chart: ChartJS) {
             const ctx = chart.ctx;
+            const type = (chart.config as { type?: string }).type;
             
-            if (chart.config.type === 'doughnut' || chart.config.type === 'pie' || chart.config.type === 'polarArea') {
-                const { width, height } = chart;
+            if (type === 'doughnut' || type === 'pie' || type === 'polarArea') {
+                const { height } = chart;
                 const chartArea = chart.chartArea;
                 const centerX = (chartArea.left + chartArea.right) / 2;
                 const centerY = (chartArea.top + chartArea.bottom) / 2;
                 
                 // Draw center total for doughnut and pie only
-                if (chart.config.type === 'doughnut' || chart.config.type === 'pie') {
+                if (type === 'doughnut' || type === 'pie') {
                     ctx.restore();
                     const fontSize = (height / 150).toFixed(2);
                     ctx.font = `bold ${fontSize}em sans-serif`;
@@ -186,17 +196,17 @@ const CircularsChart: React.FC<CircularsChartProps> = ({ circularType }) => {
                 ctx.textBaseline = 'middle';
                 ctx.textAlign = 'center';
                 
-                meta.data.forEach((element: any, index: number) => {
-                    const { x, y } = element.tooltipPosition();
+                meta.data.forEach((element, index: number) => {
+                    const { x, y } = element.tooltipPosition(false);
                     const value = data[index];
                     
-                    if (value) {
+                    if (value && x != null && y != null) {
                         ctx.fillText(value.toString(), x, y);
                     }
                 });
                 
                 ctx.save();
-            } else if (chart.config.type === 'bar' || chart.config.type === 'line') {
+            } else if (type === 'bar' || type === 'line') {
                 // Draw values on top of each bar or line point
                 const data = chart.data.datasets[0].data;
                 const meta = chart.getDatasetMeta(0);
@@ -206,7 +216,7 @@ const CircularsChart: React.FC<CircularsChartProps> = ({ circularType }) => {
                 ctx.textBaseline = 'bottom';
                 ctx.textAlign = 'center';
                 
-                meta.data.forEach((element: any, index: number) => {
+                meta.data.forEach((element, index: number) => {
                     const value = data[index];
                     
                     if (value) {
