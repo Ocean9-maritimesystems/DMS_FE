@@ -648,14 +648,18 @@ const AddEditCircular: React.FC<AddEditCircularProps> = ({ initialData, onSubmit
         dataToSubmit.allowedUserToAck = selectedAllowedUsers.join(', ');
         dataToSubmit.vesselIdList = selectedVesselIds;
         dataToSubmit.requireAcknowledgement = requireAcknowledgement;
+        // The file loaded with the circular (text from the API) is not sent back: saving the other fields then leaves
+        // the stored file as it is. Sending it again re-saved it with a new date, so every vessel downloaded it again.
+        // A newly chosen file (bytes) is sent; a removed one goes as an empty file name.
+        if (typeof dataToSubmit.blobContents === 'string') dataToSubmit.blobContents = undefined;
         if (dataToSubmit.blobContents && dataToSubmit.blobContents instanceof Uint8Array) {
-            let binary = '';
-            const bytes = new Uint8Array(dataToSubmit.blobContents);
-            const len = bytes.byteLength;
-            for (let i = 0; i < len; i++) {
-                binary += String.fromCharCode(bytes[i]);
+            // Built 32 KB at a time: one character at a time froze the page for seconds on a large file.
+            const bytes = dataToSubmit.blobContents;
+            const parts: string[] = [];
+            for (let i = 0; i < bytes.length; i += 0x8000) {
+                parts.push(String.fromCharCode(...bytes.subarray(i, i + 0x8000)));
             }
-            dataToSubmit.blobContents = window.btoa(binary);
+            dataToSubmit.blobContents = window.btoa(parts.join(''));
         }
 
         // Kept when the form closes: the temporary record is now the circular. A failed save (false) leaves it
