@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Dropdown } from 'primereact/dropdown';
-import { getDocument } from 'pdfjs-dist';
+import { getDocument, OPS } from 'pdfjs-dist';
 import { GlobalWorkerOptions } from 'pdfjs-dist';
 import { Checkbox } from 'primereact/checkbox';
 import JoditEditor from 'jodit-react';
 import dmsLifecycleService from '../../../services/DMSLifecycleService';
 import ApprovalFlow from './ApprovalFlow';
-import { escapeHtml, sanitizeHtml } from '../../utils/sanitize';
+import { sanitizeHtml } from '../../utils/sanitize';
+import { pdfToHtml } from '../../utils/pdfToHtml';
 import './AddEditManual.scss';
 
 GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -84,6 +85,7 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
     const [approvalFlowOptions, setApprovalFlowOptions] = useState<{ label: string; value: number }[]>([]);
     const pdfInput = useRef<HTMLInputElement>(null);
     const [problem, setProblem] = useState<string | null>(null);
+    const [importing, setImporting] = useState(false);
     /** The manual code last filled in from the category; a code the user typed is never replaced. */
     const autoCodeRef = useRef('');
     const codeRequestRef = useRef(0);
@@ -96,7 +98,8 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
         askBeforePasteHTML: false,
         askBeforePasteFromWord: false,
         defaultActionOnPaste: 'insert_as_html' as const,
-        height: 'clamp(280px, 48vh, 420px)',
+        // Most of the dialog (92% of the window) goes to the text; the fields above take about 330px.
+        height: Math.max(420, Math.round((typeof window === 'undefined' ? 900 : window.innerHeight) * 0.92 - 330)),
         toolbar: true,
         placeholder: '',
         toolbarAdaptive: false,
@@ -232,30 +235,34 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
         if (!p) onSubmit({ ...form, IsToPublish: true });
     };
 
+    /**
+     * Import from a PDF: every page, with headings, paragraphs, bold / italic and lists rebuilt (see pdfToHtml).
+     * The text is added after what is already in the editor, so nothing written there is lost.
+     */
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files || e.target.files.length === 0) {
+        const file = e.target.files?.[0];
+        e.target.value = ''; // the same file can be imported again
+        if (!file) return;
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            setProblem('Choose a PDF file to import.');
             return;
         }
-        const file = e.target.files[0];
-        e.target.value = ''; // the same file can be imported again
-        if (file && file.type === 'application/pdf') {
-            const reader = new FileReader();
-            reader.onload = async () => {
-                if (reader.result && typeof reader.result !== 'string') {
-                const typedArray = new Uint8Array(reader.result as ArrayBuffer);
-                const pdf = await getDocument({ data: typedArray }).promise;
-                const page = await pdf.getPage(1);
-                const content = await page.getTextContent();
-                const text = content.items
-                    .map((item) => ('str' in item ? item.str : ''))
-                    .join(' ');
-                // Text from the PDF goes into the editor as text, not as HTML.
-                setForm(prev => ({ ...prev, TextContents: `<p>${escapeHtml(text ?? '')}</p>` }))
-                }
-            };
-            reader.readAsArrayBuffer(file);
+        setImporting(true);
+        setProblem(null);
+        try {
+            const pdf = await getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+            const html = sanitizeHtml(await pdfToHtml(pdf, OPS)); // OPS: colours and pictures as well
+            if (!html.trim()) {
+                setProblem('No text found in this PDF (a scanned page is a picture, not text).');
+                return;
+            }
+            setForm(prev => ({ ...prev, TextContents: prev.TextContents.trim() ? `${prev.TextContents}\n${html}` : html }));
+        } catch {
+            setProblem('The PDF could not be read.');
+        } finally {
+            setImporting(false);
         }
-    }
+    };
 
     return (
         <form onSubmit={handleSubmit} className="add-edit-manual-form mf" noValidate>
@@ -312,21 +319,21 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
                 </div>
             </div>
 
-            <fieldset className="mf-options">
-                <legend>Options</legend>
+            <div className="mf-options" role="group" aria-label="Options">
+                <span className="mf-options__title">Options</span>
                 <label className="mf-check">
                     <Checkbox checked={form.IsMainTitle === 1} onChange={e => setForm(prev => ({ ...prev, IsMainTitle: e.checked ? 1 : 0 }))} />
                     <span>Main title</span>
                 </label>
-                <label className="mf-check">
+                <label className="mf-check" title="Can be downloaded as PDF or Word">
                     <Checkbox checked={form.CanExport === 1} onChange={e => setForm(prev => ({ ...prev, CanExport: e.checked ? 1 : 0 }))} />
-                    <span>Allow export<small>Can be downloaded as PDF or Word</small></span>
+                    <span>Allow export</span>
                 </label>
-                <label className="mf-check">
+                <label className="mf-check" title="Readers must confirm they have read it">
                     <Checkbox checked={form.IsAcknowledgementRequired === 1} onChange={e => setForm(prev => ({ ...prev, IsAcknowledgementRequired: e.checked ? 1 : 0 }))} />
-                    <span>Acknowledgement required<small>Readers must confirm they have read it</small></span>
+                    <span>Acknowledgement required</span>
                 </label>
-                <label className="mf-check">
+                <label className="mf-check" title="Goes through an approval flow before release">
                     <Checkbox
                         checked={form.IsApprovalRequired === 1}
                         onChange={e => {
@@ -338,7 +345,7 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
                             }));
                         }}
                     />
-                    <span>Approval required<small>Goes through an approval flow before release</small></span>
+                    <span>Approval required</span>
                 </label>
                 {form.IsApprovalRequired === 1 && (
                     <div className="mf-flow">
@@ -354,15 +361,15 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
                         {form.Approval_FlowID > 0 && <div className="mf-flow__steps"><ApprovalFlow currentFlow={form.Approval_FlowID} /></div>}
                     </div>
                 )}
-            </fieldset>
+            </div>
 
             <div className="mf-content">
                 <div className="mf-content__head">
                     <span className="mf-content__title">Content</span>
                     <input ref={pdfInput} type="file" accept="application/pdf" hidden onChange={handleFileChange} />
-                    <button type="button" className="mf-btn mf-btn--small" onClick={() => pdfInput.current?.click()}
-                        title="Puts the text of the PDF's first page into the editor">
-                        <i className="pi pi-file-pdf" aria-hidden="true" /> Import text from a PDF
+                    <button type="button" className="mf-btn mf-btn--small" onClick={() => pdfInput.current?.click()} disabled={importing}
+                        title="Adds the PDF's text and pictures to the editor, with headings, paragraphs, bold, colours and lists (tables come in as text)">
+                        <i className={importing ? 'pi pi-spin pi-spinner' : 'pi pi-file-pdf'} aria-hidden="true" /> {importing ? 'Importing…' : 'Import from a PDF'}
                     </button>
                 </div>
                 <div className="mf-editor">

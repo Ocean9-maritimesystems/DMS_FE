@@ -2,6 +2,7 @@ import { Chart } from 'primereact/chart';
 import { useEffect, useState } from 'react';
 import { useTheme } from '../../../contexts/ThemeContext';
 import type { TooltipItem } from 'chart.js';
+import '../../utils/chartSetup'; // the bar chart is registered before it is drawn
 
 interface ChartProps {
     newCnt : number ;

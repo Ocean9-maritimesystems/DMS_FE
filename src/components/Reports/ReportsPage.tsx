@@ -299,8 +299,7 @@ const useFilterLists = () => {
 };
 
 /**
- * The reports of one area (manuals, circulars, alerts, other documents) and the chosen report (filters, results,
- * Excel / PDF / CSV export). Opened from that area; there is no separate Reports page.
+ * The reports of one area (manuals, circulars, alerts, other documents) and the chosen report.
  *   layout "list" - the reports listed on the left (the Manuals / Circulars report windows);
  *   layout "tabs" - the reports as tabs above the report, no side list (Other documents > All vessels).
  */
@@ -318,15 +317,17 @@ export const ReportPanel: React.FC<{ context: ReportContextKey; className?: stri
     if (layout === 'tabs') {
         return (
             <div className={`rp-tabbed${className ? ` ${className}` : ''}`}>
-                <div className="rp-tabs" role="tablist" aria-label={area.title}>
-                    {items.map((x, i) => (
-                        <button key={`${x.use.key}-${i}`} type="button" role="tab" aria-selected={i === index}
-                            className={`rp-tab${i === index ? ' active' : ''}`} onClick={() => setIndex(i)}>
-                            <i className={x.report.icon} aria-hidden="true" />
-                            <span>{x.use.title ?? x.report.title}</span>
-                        </button>
-                    ))}
-                </div>
+                {items.length > 1 && (
+                    <div className="rp-tabs" role="tablist" aria-label={area.title}>
+                        {items.map((x, i) => (
+                            <button key={`${x.use.key}-${i}`} type="button" role="tab" aria-selected={i === index}
+                                className={`rp-tab${i === index ? ' active' : ''}`} onClick={() => setIndex(i)}>
+                                <i className={x.report.icon} aria-hidden="true" />
+                                <span>{x.use.title ?? x.report.title}</span>
+                            </button>
+                        ))}
+                    </div>
+                )}
                 {view}
             </div>
         );

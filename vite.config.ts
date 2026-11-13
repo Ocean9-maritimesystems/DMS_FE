@@ -21,6 +21,16 @@ const copyPublicWithoutIndexHtml = (): Plugin => ({
     },
 });
 
+/**
+ * Without REACT_APP_API_URL the app calls /api on its own site. When running locally (npm run dev / preview) that is
+ * this dev server on port 3000, so /api is passed on to the API: https://localhost:7151 (the API's "https" profile),
+ * or the address in REACT_APP_DEV_API_TARGET. secure: false accepts the API's local development certificate.
+ */
+const devApiTarget = process.env.REACT_APP_DEV_API_TARGET || 'https://localhost:7151';
+const apiProxy = {
+    '/api': { target: devApiTarget, changeOrigin: true, secure: false },
+};
+
 // https://vite.dev/config/
 export default defineConfig({
     plugins: [react(), copyPublicWithoutIndexHtml()],
@@ -29,9 +39,11 @@ export default defineConfig({
     server: {
         port: 3000, // the API allows http://localhost:3000 (AllowedCorsOrigin)
         strictPort: true,
+        proxy: apiProxy,
     },
     preview: {
         port: 3000,
+        proxy: apiProxy,
     },
     build: {
         outDir: 'build', // same folder as before, so deployment does not change

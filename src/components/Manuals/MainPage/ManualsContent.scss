@@ -725,3 +725,38 @@
     padding: 1rem 1.5rem !important;
   }
 }
+
+/* Approval steps with who/when under each; the scroll bar of the text at the right edge (the text column is centred
+   with padding, not by narrowing the scrolling box). */
+.manuals-content .mc-steps {
+  flex-wrap: wrap;
+  row-gap: 6px;
+
+  li { align-items: flex-start; }
+  li + li::before { align-self: center; margin-top: 0; }
+  li[title] { cursor: help; }
+
+  &__text { display: flex; flex-direction: column; line-height: 1.2; }
+  &__sub { font-size: 0.72rem; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
+  .is-current .mc-steps__sub { color: var(--primary-color); font-weight: 600; }
+}
+
+.manuals-content .mc-actions { align-items: center; }
+.manuals-content .mc-actions .mc-check { margin-right: 6px; }
+
+.manuals-content .sectiontext.mc-reader .jodit-react-container .jodit-container .jodit-workplace .jodit-wysiwyg {
+  max-width: none;
+  margin: 0 !important;
+  padding: 1rem max(1.5rem, calc((100% - 980px) / 2)) !important;
+}
+
+/* Section titles the API puts above each manual's text ("1.4 - 004 Navigation ..."), see 037_ManualContent_*.sql. */
+.manuals-content .mc-reader .manual-section-title {
+  margin: 1.4em 0 0.5em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--primary-color);
+  font-size: 1.05em;
+
+  &:first-child { margin-top: 0; }
+}

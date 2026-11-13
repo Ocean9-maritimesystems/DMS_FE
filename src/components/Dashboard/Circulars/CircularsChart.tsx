@@ -17,6 +17,7 @@ import {
 import { SelectButton } from 'primereact/selectbutton';
 import dmsLifecycleService from '../../../services/DMSLifecycleService';
 import './CircularsChart.scss';
+import '../../utils/chartSetup'; // every chart type (bar, doughnut, pie, line, polar area)
 
 ChartJS.register(ArcElement, Tooltip, Legend, Title, CategoryScale, LinearScale, BarElement, LineElement, PointElement);
 

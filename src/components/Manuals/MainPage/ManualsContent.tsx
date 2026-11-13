@@ -28,6 +28,32 @@ export interface ManualDetailsProps {
     onRefreshTree?: () => void;
 }
 
+/** api/Manuals/GetApprovalProgress */
+interface ApprovalStep {
+    statusId: number;
+    name: string;
+    role?: string;
+    dept?: string;
+    state: 'done' | 'current' | 'pending';
+    approvedBy?: string;
+    approvedOn?: string;
+    comments?: string;
+}
+interface ApprovalProgress {
+    approvalRequired: boolean;
+    statusId: number;
+    steps: ApprovalStep[];
+}
+
+/** One step in the bar above the text. */
+interface StatusStep {
+    key: string;
+    label: string;
+    sub?: string;
+    hint?: string;
+    state: 'done' | 'current' | 'pending';
+}
+
 /** api/Manuals/ApproveManual and SendBackManual */
 interface ManualApprovalRequest {
     dM_ManualID: string | number | undefined;
@@ -79,7 +105,7 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
         {
             setManualID(manualInfo.selectedManualNodeObj.key ? Number(manualInfo.selectedManualNodeObj.key) : -1);
             setHeaderText(manualInfo.selectedManualNodeObj.label ?? '');
-            setIsFavourite(manualInfo.selectedManualNodeObj.data.isFavourite ? manualInfo.selectedManualNodeObj.data.isFavourite === 1 ? true : false : false);
+            setIsFavourite(Number(manualInfo.selectedManualNodeObj.data?.isFavourite ?? 0) > 0); // a count of favourite rows: 1 or more
 
             setIsManualReleased(false);
             if(manualInfo.selectedManualNodeObj?.data?.dM_StatusID === 150) {
@@ -104,6 +130,21 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
     // Reloaded when another manual is selected (or the same one after an edit: a new node object) or the
     // "include sub manuals" box changes.
     const selectedNode = manualInfo.selectedManualNodeObj;
+
+    // The approval steps of this version (done / current / pending, who approved and when), for the bar above the text.
+    const [progress, setProgress] = useState<ApprovalProgress | null>(null);
+    const progressManualId = selectedNode?.key;
+    const progressVersionId = selectedNode?.data?.dM_ManualVersionID;
+    const progressStatusId = selectedNode?.data?.dM_StatusID;
+    useEffect(() => {
+        setProgress(null);
+        if (progressManualId == null || !progressVersionId) return;
+        let cancelled = false;
+        dmsLifecycleService.getApiCall<ApprovalProgress>(`Manuals/GetApprovalProgress?dm_ManualID=${progressManualId}&dm_ManualVersionID=${progressVersionId}`)
+            .then((p) => { if (!cancelled) setProgress(p ?? null); })
+            .catch(() => { if (!cancelled) setProgress(null); }); // the simple Draft / Approval / Released steps are shown instead
+        return () => { cancelled = true; };
+    }, [progressManualId, progressVersionId, progressStatusId]);
     useEffect(() => {
         if (selectedNode) fetchData();
     }, [fetchData, selectedNode]);
@@ -195,11 +236,24 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
     const statusId: number = node?.data?.dM_StatusID ?? 0;
     const statusText: string = node?.data?.statusString ?? '';
     const inApproval = statusId > 100 && statusId < 150;
-    const stepIndex = statusId >= 150 ? 2 : inApproval ? 1 : 0;
-    const steps = [
-        { label: 'Draft' },
-        { label: inApproval && statusText ? statusText : 'Approval' },
-        { label: 'Released' },
+    const released = statusId >= 150;
+    const approvalSteps: StatusStep[] = progress?.approvalRequired && progress.steps.length
+        ? progress.steps.map((a) => ({
+            key: `a${a.statusId}`,
+            label: a.name,
+            sub: a.state === 'done'
+                ? [a.approvedBy, a.approvedOn ? formatDate(a.approvedOn) : ''].filter(Boolean).join(' · ') || 'Approved'
+                : a.state === 'current' ? 'Waiting' : 'Not yet',
+            hint: [a.role && a.dept ? `${a.role} (${a.dept})` : a.role || a.dept, a.comments ? `Comment: ${a.comments}` : ''].filter(Boolean).join('\n') || undefined,
+            state: a.state,
+        }))
+        : progress && !progress.approvalRequired
+            ? [] // no approval needed: Draft, then Released
+            : [{ key: 'approval', label: inApproval && statusText ? statusText : 'Approval', state: released ? 'done' : inApproval ? 'current' : 'pending' }];
+    const steps: StatusStep[] = [
+        { key: 'draft', label: 'Draft', state: statusId > 100 ? 'done' : 'current' },
+        ...approvalSteps,
+        { key: 'released', label: 'Released', sub: released ? formatDate(node?.data?.lastUpdated) : undefined, state: released ? 'done' : 'pending' },
     ];
 
     /** Why Edit or Approve cannot be used right now (null when it can); shown on the button. */
@@ -254,18 +308,21 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
                 <div className="mc-bar">
                     <ol className="mc-steps" aria-label={`Status: ${statusText}`}>
                         {steps.map((s, i) => (
-                            <li key={s.label} className={i < stepIndex ? 'is-done' : i === stepIndex ? 'is-current' : ''}
-                                aria-current={i === stepIndex ? 'step' : undefined}>
-                                <span className="mc-steps__dot" aria-hidden="true">{i < stepIndex ? <i className="pi pi-check" /> : i + 1}</span>
-                                <span className="mc-steps__label">{s.label}</span>
+                            <li key={s.key} className={s.state === 'done' ? 'is-done' : s.state === 'current' ? 'is-current' : ''}
+                                aria-current={s.state === 'current' ? 'step' : undefined} title={s.hint}>
+                                <span className="mc-steps__dot" aria-hidden="true">{s.state === 'done' ? <i className="pi pi-check" /> : i + 1}</span>
+                                <span className="mc-steps__text">
+                                    <span className="mc-steps__label">{s.label}</span>
+                                    {s.sub && <span className="mc-steps__sub">{s.sub}</span>}
+                                </span>
                             </li>
                         ))}
                     </ol>
-                    <label className="mc-check" title="Show the sections below this manual in the text too">
-                        <input type="checkbox" checked={isChecked} onChange={e => { setIsChecked(e.target.checked); }} />
-                        Show sub-sections
-                    </label>
                     <div className="mc-actions">
+                        <label className="mc-check" title="Show the sections below this manual in the text too">
+                            <input type="checkbox" checked={isChecked} onChange={e => { setIsChecked(e.target.checked); }} />
+                            Show sub-sections
+                        </label>
                         <button type="button" className="mc-btn" onClick={() => setVisibleCompareVersionDialog(true)}>
                             <i className="pi pi-clone" aria-hidden="true" /> Compare versions
                         </button>

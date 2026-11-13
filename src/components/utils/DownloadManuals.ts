@@ -142,6 +142,26 @@ export async function downloadAsWord(manualText: string, dmManualVersionID: numb
     URL.revokeObjectURL(url);
 }
 
+/**
+ * The page's <style> rules only for the PDF copy: every selector is put under .manual-print ("body" becomes
+ * .manual-print itself), so while the PDF is made the rules do not restyle the app around it. The "CONFIDENTIAL"
+ * watermark is position: fixed for Word; here it is placed in the copy instead of in the middle of the screen.
+ */
+export function scopePrintCss(html: string): string {
+    const scoped = html.replace(/<style>([\s\S]*?)<\/style>/gi, (_m, css: string) => {
+        const rules = css.replace(/(^|})(\s*)([^{}@]+)\{/g, (_r, close: string, space: string, selectors: string) => {
+            const list = selectors.split(',').map((s) => s.trim()).filter(Boolean)
+                .map((s) => (s === 'body' || s === 'html' ? '.manual-print' : `.manual-print ${s}`));
+            return `${close}${space}${list.join(', ')} {`;
+        });
+        return `<style>${rules}
+            .manual-print { position: relative; background: #fff; color: #000; }
+            .manual-print .watermark { position: absolute !important; top: 300px !important; }
+        </style>`;
+    });
+    return scoped;
+}
+
 export async function downloadAsPDF(manualText: string, dmManualVersionID: number) {
     const { htmlContent, manualName } = await generateHTMLContent(manualText, dmManualVersionID);
 
@@ -151,40 +171,50 @@ export async function downloadAsPDF(manualText: string, dmManualVersionID: numbe
         format: "a4"
     });
 
-    // Create a temporary element to render the HTML
-    // The page is put into this document for jsPDF to lay out, so nothing in it may run code.
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = sanitizePrintableHtml(htmlContent);
-    document.body.appendChild(tempDiv);
+    // jsPDF lays the page out from an element in this document. The page sits in a holder off the screen (and hidden
+    // from screen readers), so it is not seen at the bottom of the page while the PDF is made; jsPDF is given the page
+    // itself (it copies it, and a copy of the holder's off-screen position would print a blank page). The holder is
+    // always taken out again. Nothing in the page may run code (sanitizePrintableHtml).
+    const holder = document.createElement('div');
+    holder.setAttribute('aria-hidden', 'true');
+    holder.style.cssText = 'position:fixed;left:-100000px;top:0;width:800px;overflow:hidden;pointer-events:none;';
+    const page = document.createElement('div');
+    page.className = 'manual-print';
+    page.innerHTML = scopePrintCss(sanitizePrintableHtml(htmlContent));
+    holder.appendChild(page);
+    document.body.appendChild(holder);
 
-    doc.html(tempDiv, {
-        callback: function (doc) {
-            // Add watermark to all pages
-            const pageCount = doc.getNumberOfPages();
-            for (let i = 1; i <= pageCount; i++) {
-                doc.setPage(i);
-                doc.setFontSize(60);
-                doc.setTextColor(100, 100, 100);
-                doc.saveGraphicsState();
-                
-                // Center the watermark and rotate it
-                const pageWidth = doc.internal.pageSize.getWidth()+150;
-                const pageHeight = doc.internal.pageSize.getHeight()+150;
-                
-                doc.text('Downloaded Copy', pageWidth / 2, pageHeight / 2, {
-                    align: 'center',
-                    angle: 45,
-                    renderingMode: 'stroke'
-                });
-                
-                doc.restoreGraphicsState();
-            }
-            doc.save(`${manualName || 'manual'}.pdf`);
-            document.body.removeChild(tempDiv); // Clean up
-        },
-        x: 20,
-        y: 20,
-        width: 555, // a4 width minus margins (595 - 2*20)
-        windowWidth: 800 // helps with scaling
-    });
-  }
+    try {
+        await doc.html(page, {
+            callback: function (doc) {
+                // Add watermark to all pages
+                const pageCount = doc.getNumberOfPages();
+                for (let i = 1; i <= pageCount; i++) {
+                    doc.setPage(i);
+                    doc.setFontSize(60);
+                    doc.setTextColor(100, 100, 100);
+                    doc.saveGraphicsState();
+
+                    // Center the watermark and rotate it
+                    const pageWidth = doc.internal.pageSize.getWidth()+150;
+                    const pageHeight = doc.internal.pageSize.getHeight()+150;
+
+                    doc.text('Downloaded Copy', pageWidth / 2, pageHeight / 2, {
+                        align: 'center',
+                        angle: 45,
+                        renderingMode: 'stroke'
+                    });
+
+                    doc.restoreGraphicsState();
+                }
+                doc.save(`${manualName || 'manual'}.pdf`);
+            },
+            x: 20,
+            y: 20,
+            width: 555, // a4 width minus margins (595 - 2*20)
+            windowWidth: 800 // helps with scaling
+        });
+    } finally {
+        holder.remove();
+    }
+}

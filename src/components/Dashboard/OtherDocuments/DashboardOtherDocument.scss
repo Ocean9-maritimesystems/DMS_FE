@@ -854,3 +854,63 @@
     .vd-legend__item { display: inline-flex; align-items: center; gap: 6px; }
     .vd-table { margin-bottom: 14px; }
 }
+
+/* Documents table: always as wide as the panel, no sideways scroll. Fixed, compact column widths; the title takes
+   the rest; long text is cut with "…" (the full text shows on hover). */
+.other-documents-dashboard {
+    .vd-docs { overflow-x: hidden; }
+
+    .vd-table .p-datatable-wrapper { overflow-x: hidden !important; }
+
+    .vd-table .p-datatable-table,
+    .vd-table__grid { width: 100%; min-width: 0 !important; table-layout: fixed; }
+
+    .vd-col-no { width: 190px; }
+    .vd-col-type { width: 170px; }
+    .vd-col-folder { width: 130px; }
+    .vd-col-source { width: 120px; }
+    .vd-col-added { width: 110px; }
+    .vd-col-files { width: 64px; text-align: center; }
+    .vd-col-tools { width: 96px; text-align: right; }
+
+    /* The document number is shown in full: it wraps onto a second line instead of being cut with "…". */
+    .vd-table .p-datatable-tbody > tr > td.vd-col-no { text-overflow: clip; }
+    .vd-table .vd-doc-no.vd-cell-ellipsis { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.3; }
+
+    /* Move and Delete side by side, always both visible. */
+    .vd-row-tools { display: inline-flex; flex-wrap: nowrap; justify-content: flex-end; gap: 2px; }
+    .vd-row-tools .p-button.p-button-icon-only { width: 32px; height: 32px; padding: 0; flex: none; }
+
+    .vd-table .p-datatable-thead > tr > th,
+    .vd-table .p-datatable-tbody > tr > td { overflow: hidden; text-overflow: ellipsis; }
+
+    .vd-cell-ellipsis { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+/* Delete (document / folder) confirmation: same look as "Confirm move", Cancel and a red Delete with room around them. */
+.p-confirm-dialog.vd-delete-confirm-dialog {
+    width: min(28rem, calc(100vw - 2rem));
+
+    .p-confirm-dialog-icon { color: var(--danger-color, #dc2626); font-size: 1.4rem; }
+
+    .p-dialog-footer .p-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+    }
+
+    .p-dialog-footer .p-confirm-dialog-reject {
+        background: transparent;
+        border-color: transparent;
+        color: var(--text-secondary, #475569);
+    }
+}
+
+/* Other documents page: use the full width of the window (no page max-width), with a small margin each side. */
+main.dashboard-main:has(> .other-documents-dashboard) {
+    max-width: none !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+}

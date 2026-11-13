@@ -645,3 +645,64 @@
     .add-edit-manual-form.mf .mf-grid,
     .add-edit-manual-form.mf .mf-options { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Compact options (one row: the explanations are tooltips), the approval flow small and inline, the bar with the
+   buttons kept at the top while the form scrolls, and the text editor taking the space that is left. */
+.add-edit-manual-form.mf {
+    gap: 0.75rem;
+
+    .mf-bar {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        margin: -0.75rem -1rem 0;
+        padding: 0.6rem 1rem;
+        background: var(--bg-secondary, #fff);
+    }
+
+    .mf-options {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 1.25rem;
+        padding: 0.55rem 0.9rem;
+
+        &__title {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--text-muted, #94a3b8);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+    }
+
+    .mf-check {
+        align-items: center;
+
+        > span { font-size: 0.85rem; white-space: nowrap; }
+    }
+
+    .mf-flow {
+        flex: 1 1 100%;
+        gap: 0.4rem 0.75rem;
+        padding-top: 0.45rem;
+        border-top: 1px dashed var(--border-color, #dbe3ec);
+
+        .p-dropdown { width: 200px; height: 32px; }
+        .p-dropdown .p-dropdown-label { padding-top: 0.35rem; padding-bottom: 0.35rem; font-size: 0.85rem; }
+    }
+
+    .mf-flow__steps {
+        flex: 1;
+        min-width: 0;
+
+        .approval-flow { width: auto !important; max-width: none; margin: 0; gap: 0; justify-content: flex-start; }
+        .step { flex: 0 0 auto; flex-direction: row; align-items: center; gap: 6px; text-align: left; }
+        .step + .step::before { content: ''; width: 22px; height: 2px; margin: 0 8px; background: var(--border-color, #cbd5e1); }
+        .circle { width: 20px; height: 20px; line-height: 20px; font-size: 0.7rem; text-align: center; }
+        .label { margin: 0; font-size: 0.72rem; line-height: 1.15; white-space: nowrap; }
+        .line { display: none; }
+    }
+
+    .mf-editor { min-height: 0; }
+}

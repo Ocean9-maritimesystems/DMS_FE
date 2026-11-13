@@ -131,9 +131,20 @@ const VesselDocuments: React.FC<Props> = ({ vesselId, vesselName, vesselMeta }) 
 
     const deleteDoc = (d: FolderDocument) => confirmDialog({
         header: 'Delete document',
-        message: `Delete ${d.documentNumber} – ${d.documentTitle}?`,
+        message: (
+            <div className="vd-move-confirm-message">
+                <span className="vd-move-confirm-message__title">Delete {d.documentNumber} – {d.documentTitle}?</span>
+                <span className="vd-move-confirm-message__route">
+                    {d.fileCount > 0 ? `The document and its ${d.fileCount === 1 ? 'file' : `${d.fileCount} files`} are removed from this list.` : 'The document is removed from this list.'}
+                </span>
+            </div>
+        ),
         icon: 'pi pi-exclamation-triangle',
+        acceptLabel: 'Delete',
+        acceptIcon: 'pi pi-trash',
+        rejectLabel: 'Cancel',
         acceptClassName: 'p-button-danger',
+        className: 'vd-move-confirm-dialog vd-delete-confirm-dialog',
         accept: async () => {
             try {
                 await featureApi.folders.deleteDocument(d.otherDocumentMasterID);
@@ -146,9 +157,18 @@ const VesselDocuments: React.FC<Props> = ({ vesselId, vesselName, vesselMeta }) 
 
     const deleteFolder = (f: FolderItem) => confirmDialog({
         header: 'Delete folder',
-        message: `Delete the folder "${f.folderName}"? It must be empty.`,
+        message: (
+            <div className="vd-move-confirm-message">
+                <span className="vd-move-confirm-message__title">Delete the folder "{f.folderName}"?</span>
+                <span className="vd-move-confirm-message__route">Only an empty folder can be deleted.</span>
+            </div>
+        ),
         icon: 'pi pi-exclamation-triangle',
+        acceptLabel: 'Delete',
+        acceptIcon: 'pi pi-trash',
+        rejectLabel: 'Cancel',
         acceptClassName: 'p-button-danger',
+        className: 'vd-move-confirm-dialog vd-delete-confirm-dialog',
         accept: async () => {
             try {
                 await featureApi.folders.remove(f.otherDocument_FolderID);
@@ -188,8 +208,8 @@ const VesselDocuments: React.FC<Props> = ({ vesselId, vesselName, vesselMeta }) 
                     </div>
                 </div>
                 <div className="vd-stats" aria-label="Summary">
-                    <span><strong>{docs.length}</strong> documents</span>
-                    <span><strong>{folders.length}</strong> folders</span>
+                    <span><strong>{docs.length}</strong> {docs.length === 1 ? 'document' : 'documents'}</span>
+                    <span><strong>{folders.length}</strong> {folders.length === 1 ? 'folder' : 'folders'}</span>
                     <span><strong>{vesselCount}</strong> from vessel</span>
                     <span><strong>{officeCount}</strong> office only</span>
                 </div>

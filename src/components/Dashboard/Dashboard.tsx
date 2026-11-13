@@ -5,6 +5,7 @@ import PageHeader from '../PageHeader';
 import DashboardOverview from './Overview/DashboardOverview';
 import DashboardManual from './Manuals/DashboardManual';
 import DashboardCirculars from './Circulars/DashboardCirculars';
+import PanelErrorBoundary from '../utils/PanelErrorBoundary';
 import './Dashboard.scss';
 
 export interface DashboardProps {
@@ -76,7 +77,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userId }) => {
                         </div>
                     }
                 >
-                    <DashboardOverview userId={userId} />
+                    <PanelErrorBoundary name="The overview"><DashboardOverview userId={userId} /></PanelErrorBoundary>
                 </TabPanel>
 
                 <TabPanel
@@ -87,7 +88,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userId }) => {
                         </div>
                     }
                 >
-                    <DashboardManual userId={userId} />
+                    <PanelErrorBoundary name="The manuals dashboard"><DashboardManual userId={userId} /></PanelErrorBoundary>
                 </TabPanel>
 
                 <TabPanel
@@ -98,7 +99,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userId }) => {
                         </div>
                     }
                 >
-                    <DashboardCirculars userId={userId} />
+                    <PanelErrorBoundary name="The circulars dashboard"><DashboardCirculars userId={userId} /></PanelErrorBoundary>
                 </TabPanel>
             </TabView>
         </main>

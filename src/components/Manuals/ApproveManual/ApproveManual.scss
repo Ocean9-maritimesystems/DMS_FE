@@ -340,3 +340,15 @@
         color: var(--danger-color, #dc3545) !important;
     }
 }
+
+/* Slimmer header, body and footer. */
+.approve-manual-header {
+    padding: 0.55rem 0.75rem 0.55rem 1.25rem;
+
+    h2 { font-size: 1.02rem; }
+    .p-button { width: 2rem; height: 2rem; }
+}
+
+.approve-manual-body { padding: 1rem 1.25rem 0.75rem; }
+.approve-manual-body .am-summary { margin-bottom: 1rem; padding: 10px 12px; }
+.approve-manual-actions { padding: 0.65rem 1.25rem; }

@@ -36,10 +36,10 @@ const NAV_LINKS: { to: string; label: string; icon: string; match: (path: string
     match: (p, s) => p.startsWith('/circulars') && /cirmode=[a-z]*alerts/i.test(s) },
   { to: '/otherdocuments', label: 'Other docs', icon: 'pi pi-folder-open',
     match: (p) => p.startsWith('/otherdocuments') || p.startsWith('/folders') },
-  { to: '/vessel-sync', label: 'Vessel sync', icon: 'pi pi-sync', match: (p) => p.startsWith('/vessel-sync') },
   { to: '/pending', label: 'Pending acks', icon: 'pi pi-clock', match: (p) => p.startsWith('/pending') },
   { to: '/suggestions', label: 'Suggestions', icon: 'pi pi-comments', match: (p) => p.startsWith('/suggestions') },
   { to: '/inbox', label: 'Inbox', icon: 'pi pi-inbox', match: (p) => p.startsWith('/inbox') },
+  { to: '/vessel-sync', label: 'Vessel sync', icon: 'pi pi-sync', match: (p) => p.startsWith('/vessel-sync') },
 ];
 
 /** one word -> first two letters. */
