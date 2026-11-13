@@ -123,39 +123,35 @@ const VesselDetails: React.FC<VesselFormProps> = ({ manualTitle, onSubmit, close
         setForm(prev => ({ ...prev, HQ_UsersIDList: hqUser }));
     };
     
+    const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+
     const formatManualTitle = (title: string): string => {
         return title?.replace(/_/g, ' ') || title || '';
     };
 
     return (
-        <form onSubmit={handleSubmit} className="vessel-details-form">
-            <div className="vessel-rights-toolbar" style={{ marginBottom: '1px', width: '100%', flexDirection: 'row', display: 'flex', justifyContent: 'space-between' }}>
-                <div className="manual-details-header">
-                    <h3 
-                     data-title={manualTitle?.replace(/_/g, ' ')}
-                     style={{ 
-                         textDecoration: 'none',
-                         color: 'var(--text-primary)',
-                         fontWeight: '600',
-                         margin: '0',
-                         fontSize: '1.25rem'
-                     }}>
-                        {formatManualTitle(manualTitle)}
-                     </h3>
+        <form onSubmit={handleSubmit} className="vessel-details-form vd-rights">
+            <div className="vd-rights__head">
+                <div className="vd-rights__title">
+                    <h3 title={formatManualTitle(manualTitle)}>{formatManualTitle(manualTitle)}</h3>
+                    <p>
+                        {selectedAction === 'View' ? 'Who has to acknowledge this manual.' : 'Choose who has to acknowledge this manual: vessels, the ranks on board, and office users.'}
+                        {' '}<strong>{n(form.VesselIdList.length, 'vessel')} · {n(form.VesselRankList.length, 'rank')} · {n(form.HQ_UsersIDList.length, 'office user')}</strong>
+                    </p>
                 </div>
-                <div className="d-flex justify-content-end" style={{ textAlign: 'right', width: '200px', gap: '10px' }}>
-                  {selectedAction !== 'View' && (
-                        <button type="submit" className="button" style={{width: '100px'}}>
-                            Save
-                        </button>
-                    )} 
-                 <button type="button" className="button" onClick={closeForm}>
-                        Cancel
+                <div className="vd-rights__actions">
+                    <button type="button" className="vd-rights-btn vd-rights-btn--text" onClick={closeForm}>
+                        {selectedAction === 'View' ? 'Close' : 'Cancel'}
                     </button>
+                    {selectedAction !== 'View' && (
+                        <button type="submit" className="vd-rights-btn vd-rights-btn--primary">
+                            <i className="pi pi-check" aria-hidden="true" /> Save
+                        </button>
+                    )}
                 </div>
             </div>
-            <div className="vessel-rights-grid" style={{ display: 'flex', gap: '25px', marginTop: '10px' }}>
-                <div className="vessel-rights-panel vessel-panel" style={{ width: '500px' }}>
+            <div className="vd-rights__grid">
+                <div className="vessel-rights-panel vessel-panel">
                     <VesselList
                         vessels={vesselList}
                         selectedVesselIdList={form.VesselIdList}
@@ -163,7 +159,7 @@ const VesselDetails: React.FC<VesselFormProps> = ({ manualTitle, onSubmit, close
                         isViewMode={selectedAction === 'View'}
                     />
                 </div>
-                <div className="vessel-rights-panel rank-panel" style={{ width: '300px'}}>
+                <div className="vessel-rights-panel rank-panel">
                     <VesselRankList
                         vslRank={vslRank}
                         selectedVesselRankList={form.VesselRankList}
@@ -171,7 +167,7 @@ const VesselDetails: React.FC<VesselFormProps> = ({ manualTitle, onSubmit, close
                         isViewMode={selectedAction === 'View'}
                     />
                 </div>
-                <div className="vessel-rights-panel hq-panel" style={{ width: '650px'}}>
+                <div className="vessel-rights-panel hq-panel">
                     <HQUserList
                         hqUser={hqUser}
                         selectedHQUserList={form.HQ_UsersIDList}

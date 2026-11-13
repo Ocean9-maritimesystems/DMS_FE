@@ -233,3 +233,145 @@
     gap: 0.25rem;
   }
 }
+
+/* Manual details: as tall as its content (the dialog scrolls, once), number + name as the title, empty values as "–",
+   the version's history as a short timeline, the content as the page itself. */
+.manual-details-container.md {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  margin: 0;
+  box-shadow: none;
+
+  .manual-details-header h3 {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    font-size: 1.4rem;
+    color: var(--text-primary, #172033);
+  }
+
+  .md-no {
+    color: var(--primary-color, #0072bc);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .md-sub {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.3rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary, #475467);
+  }
+
+  .md-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .md-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem 1.25rem;
+    margin: 0;
+
+    div { min-width: 0; }
+
+    dt {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-muted, #718096);
+    }
+
+    dd {
+      margin: 0.15rem 0 0;
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--text-primary, #222);
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .md-history {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+
+    li {
+      position: relative;
+      display: grid;
+      grid-template-columns: 26px 1fr;
+      column-gap: 0.6rem;
+      padding-bottom: 0.7rem;
+      color: var(--text-muted, #94a3b8);
+
+      &:not(:last-child)::after {
+        content: '';
+        position: absolute;
+        top: 24px;
+        bottom: 2px;
+        left: 12px;
+        width: 2px;
+        background: var(--border-color, #e2e8f0);
+      }
+
+      &.is-done { color: var(--text-primary, #222); }
+    }
+
+    &__dot {
+      grid-row: span 2;
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border: 2px solid var(--border-color, #e2e8f0);
+      border-radius: 50%;
+      background: var(--bg-secondary, #fff);
+      font-size: 0.65rem;
+    }
+
+    .is-done .md-history__dot {
+      border-color: var(--success-color, #059669);
+      background: var(--success-color, #059669);
+      color: #fff;
+    }
+
+    &__what { font-size: 0.88rem; font-weight: 600; }
+    &__when { font-size: 0.8rem; color: var(--text-muted, #94a3b8); }
+  }
+
+  .manual-details-comments.is-empty { color: var(--text-muted, #94a3b8); font-style: italic; }
+
+  .content-section {
+    flex: none;
+    overflow: visible;
+  }
+
+  .md-content {
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    background: var(--bg-primary, #fff);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+
+    > :first-child { margin-top: 0; }
+    p { margin: 0.3rem 0; }
+    ul, ol { margin: 0.3rem 0; padding-left: 1.4rem; }
+    img { max-width: 100%; height: auto; }
+    table { border-collapse: collapse; max-width: 100%; }
+    td, th { border: 1px solid var(--border-color, #e2e8f0); padding: 0.25rem 0.5rem; }
+  }
+}
+
+.md-loading { padding: 2rem; text-align: center; color: var(--text-muted, #94a3b8); }
+
+@media (max-width: 800px) {
+  .manual-details-container.md .md-columns { grid-template-columns: minmax(0, 1fr); }
+}

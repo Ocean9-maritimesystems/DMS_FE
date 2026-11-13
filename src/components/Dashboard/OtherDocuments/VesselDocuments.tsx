@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from 'primereact/button';
 import { Column } from 'primereact/column';
 import { confirmDialog, ConfirmDialog } from 'primereact/confirmdialog';
@@ -25,6 +25,8 @@ const LOOSE = 'loose';
 const NEW_FOLDER = -999;
 /** PrimeReact's Dropdown treats null as 'nothing chosen', so 'Not in a folder' uses 0 in the list. */
 const NO_FOLDER = 0;
+/** Files one new document can have (the office API refuses more). */
+const MAX_DOCUMENT_FILES = 3;
 
 type Source = 'all' | 'vessel' | 'office';
 
@@ -233,7 +235,10 @@ const VesselDocuments: React.FC<Props> = ({ vesselId, vesselName, vesselMeta }) 
 
                 <section className="vd-docs">
                     <div className="vd-docs__bar">
-                        <h4>{heading}</h4>
+                        <h4>
+                            {heading}
+                            {!loading && <span className="vd-docs__count">{shown.length} {shown.length === 1 ? 'document' : 'documents'}</span>}
+                        </h4>
                         <span className="vd-spacer" />
                         <span className="od-search">
                             <i className="pi pi-search" />
@@ -242,31 +247,41 @@ const VesselDocuments: React.FC<Props> = ({ vesselId, vesselName, vesselMeta }) 
                         <SelectButton className="vd-source" value={source} onChange={(e) => e.value && setSource(e.value)}
                             options={[{ label: 'All', value: 'all' }, { label: 'From vessel', value: 'vessel' }, { label: 'Office only', value: 'office' }]} />
                     </div>
-                    <DataTable value={shown} loading={loading} size="small" stripedRows paginator={shown.length > 15} rows={15} dataKey="otherDocumentMasterID"
-                        className="vd-table"
+                    <DataTable value={shown} loading={loading} size="small" rowHover paginator={shown.length > 15} rows={15} dataKey="otherDocumentMasterID"
+                        className="vd-table" tableClassName="vd-table__grid"
                         emptyMessage={selectedFolder
                             ? <span>This folder is empty. <Button label="Add a document here" link className="p-0" onClick={() => setNewDoc(true)} /></span>
                             : 'No documents.'}>
-                        <Column field="documentNumber" header="No." sortable style={{ width: 110 }} body={(d: FolderDocument) => (
-                            <span>{d.documentNumber || '–'}</span>
+                        <Column field="documentNumber" header="No." sortable className="vd-col-no" headerClassName="vd-col-no" body={(d: FolderDocument) => (
+                            <span className="vd-cell-ellipsis vd-doc-no" title={d.documentNumber}>{d.documentNumber || '–'}</span>
                         )} />
-                        <Column field="documentTitle" header="Title" sortable />
-                        <Column field="documentType" header="Type" sortable style={{ width: 120 }} />
-                        {selected === ALL && <Column field="folderName" header="Folder" sortable style={{ width: 170 }} body={(d: FolderDocument) => (inFolder(d)
-                            ? <span className="vd-ellipsis" title={paths.get(d.otherDocument_FolderID!)}><i className="pi pi-folder vd-muted" /> {d.folderName}</span>
+                        <Column field="documentTitle" header="Title" sortable className="vd-col-title" headerClassName="vd-col-title" body={(d: FolderDocument) => {
+                            const sub = [d.status, d.reference].filter(Boolean).join(' · ');
+                            return (
+                                <>
+                                    <span className="vd-doc-title" title={d.documentTitle}>{d.documentTitle || '–'}</span>
+                                    {sub && <span className="vd-doc-sub" title={sub}>{sub}</span>}
+                                </>
+                            );
+                        }} />
+                        <Column field="documentType" header="Type" sortable className="vd-col-type" headerClassName="vd-col-type" body={(d: FolderDocument) => (
+                            <span className="vd-cell-ellipsis" title={d.documentType}>{d.documentType || '–'}</span>
+                        )} />
+                        {selected === ALL && <Column field="folderName" header="Folder" sortable className="vd-col-folder" headerClassName="vd-col-folder" body={(d: FolderDocument) => (inFolder(d)
+                            ? <span className="vd-cell-ellipsis" title={paths.get(d.otherDocument_FolderID!)}><i className="pi pi-folder vd-muted" /> {d.folderName}</span>
                             : <span className="vd-muted">–</span>)} />}
-                        <Column header="Source" style={{ width: 120 }} body={(d: FolderDocument) => {
+                        <Column header="Source" className="vd-col-source" headerClassName="vd-col-source" body={(d: FolderDocument) => {
                             const s = sourceOf(d);
                             return <span className={`feature-tag ${s.css}`}>{s.label}</span>;
                         }} />
-                        <Column field="uploadedOn" header="Added" sortable style={{ width: 130 }} body={(d: FolderDocument) => (
-                            <span>{formatDate(d.uploadedOn)}<small className="vd-muted vd-block">{d.uploadedBy}</small></span>
+                        <Column field="uploadedOn" header="Added" sortable className="vd-col-added" headerClassName="vd-col-added" body={(d: FolderDocument) => (
+                            <span>{formatDate(d.uploadedOn)}<small className="vd-muted vd-block vd-cell-ellipsis" title={d.uploadedBy}>{d.uploadedBy}</small></span>
                         )} />
-                        <Column field="fileCount" header="Files" sortable style={{ width: 80 }} body={(d: FolderDocument) => (
-                            <Button link className="p-0" label={String(d.fileCount)} onClick={() => openFiles(d)}
-                                disabled={d.fileCount === 0} aria-label={`Show ${d.fileCount} files for ${d.documentNumber}`} />
-                        )} />
-                        <Column header="" style={{ width: 84 }} body={(d: FolderDocument) => (
+                        <Column field="fileCount" header="Files" sortable className="vd-col-files" headerClassName="vd-col-files" body={(d: FolderDocument) => (d.fileCount > 0
+                            ? <Button text className="vd-files-btn" icon="pi pi-paperclip" label={String(d.fileCount)} onClick={() => openFiles(d)}
+                                aria-label={`Show ${d.fileCount} ${d.fileCount === 1 ? 'file' : 'files'} for ${d.documentNumber}`} tooltip="Show files" tooltipOptions={{ position: 'top' }} />
+                            : <span className="vd-muted" aria-label="No files">–</span>)} />
+                        <Column header="" className="vd-col-tools" headerClassName="vd-col-tools" body={(d: FolderDocument) => (
                             <span className="vd-row-tools">
                                 <Button icon="pi pi-folder" text rounded size="small" aria-label="Move to folder" tooltip="Move to folder" onClick={() => setMoveDoc(d)} />
                                 {d.isOfficeOnly && (
@@ -275,11 +290,11 @@ const VesselDocuments: React.FC<Props> = ({ vesselId, vesselName, vesselMeta }) 
                             </span>
                         )} />
                     </DataTable>
-                    <p className="vd-legend">
-                        <span className="feature-tag info">From vessel</span> added on board ·
-                        <span className="feature-tag ok">Sent to vessel</span> on board too ·
-                        <span className="feature-tag muted">Office only</span> added at the office, not sent to the vessel
-                    </p>
+                    <footer className="vd-legend" aria-label="What the source tags mean">
+                        <span className="vd-legend__item"><span className="feature-tag info">From vessel</span> added on board</span>
+                        <span className="vd-legend__item"><span className="feature-tag ok">Sent to vessel</span> on board too</span>
+                        <span className="vd-legend__item"><span className="feature-tag muted">Office only</span> added at the office, not sent to the vessel</span>
+                    </footer>
                 </section>
             </div>
 
@@ -397,11 +412,16 @@ const NewDocumentDialog: React.FC<{
     const [newFolderParent, setNewFolderParent] = useState<number | null>(null);
     const [typeId, setTypeId] = useState<number | null>(null);
     const [number, setNumber] = useState('');
+    const [numberLoading, setNumberLoading] = useState(false);
+    /** The number last filled in from the type; a number the user typed is never replaced. */
+    const autoNumberRef = useRef('');
+    const numberRequestRef = useRef(0);
     const [title, setTitle] = useState('');
     const [status, setStatus] = useState('Active');
     const [reference, setReference] = useState('');
     const [comments, setComments] = useState('');
     const [files, setFiles] = useState<File[]>([]);
+    const fileInput = useRef<HTMLInputElement>(null);
     const [sendToVessel, setSendToVessel] = useState(false);
     const [busy, setBusy] = useState(false);
 
@@ -425,6 +445,24 @@ const NewDocumentDialog: React.FC<{
         return () => { cancelled = true; };
     }, [vesselId]);
 
+    /** Like the circular number: choosing the type fills in its next document number. */
+    const chooseType = (id: number | null) => {
+        setTypeId(id);
+        if (!id) return;
+        const requestId = ++numberRequestRef.current;
+        setNumberLoading(true);
+        dmsLifecycleService.getApiCall<{ documentNumber?: string } | null>(`OtherDocument/nextnumber/${id}`)
+            .then((data) => {
+                const next = data?.documentNumber ?? '';
+                if (requestId !== numberRequestRef.current || !next) return;
+                const previous = autoNumberRef.current;
+                autoNumberRef.current = next;
+                setNumber((current) => (current.trim() === '' || current === previous ? next : current));
+            })
+            .catch(() => undefined) // the number can still be typed
+            .finally(() => { if (requestId === numberRequestRef.current) setNumberLoading(false); });
+    };
+
     const writable = folders.filter((f) => f.canEdit);
     const folderOptions = [
         { label: 'Not in a folder', value: NO_FOLDER as number | null },
@@ -433,9 +471,22 @@ const NewDocumentDialog: React.FC<{
     ];
     const creatingFolder = folderId === NEW_FOLDER;
 
+    /** Adds picked files to the list (the same file twice is kept once), up to MAX_DOCUMENT_FILES. */
+    const addFiles = (picked: FileList | null) => {
+        const fresh = Array.from(picked ?? []).filter((f) => !files.some((p) => p.name === f.name && p.size === f.size));
+        const room = MAX_DOCUMENT_FILES - files.length;
+        if (fresh.length > room) {
+            const left = fresh.slice(room).map((f) => f.name).join(', ');
+            notify.warn(`A document can have up to ${MAX_DOCUMENT_FILES} files. Not added: ${left}.`);
+        }
+        if (room > 0) setFiles([...files, ...fresh.slice(0, room)]);
+        if (fileInput.current) fileInput.current.value = ''; // the same file can be picked again after removing it
+    };
+
     const save = async () => {
         if (creatingFolder && !newFolderName.trim()) { notify.warn('Enter the new folder name.'); return; }
         if (!typeId || !number.trim() || !title.trim()) { notify.warn('Choose the type and enter the document number and title.'); return; }
+        if (files.length > MAX_DOCUMENT_FILES) { notify.warn(`A document can have up to ${MAX_DOCUMENT_FILES} files.`); return; }
         setBusy(true);
         try {
             let target = folderId;
@@ -499,11 +550,12 @@ const NewDocumentDialog: React.FC<{
                 <div className="field">
                     <label>Document type</label>
                     <Dropdown value={typeId} options={types} optionLabel="documentType" optionValue="otherDocument_TypeID" filter
-                        onChange={(e) => setTypeId(e.value)} placeholder={typesLoading ? 'Loading types…' : 'Choose the type'} disabled={typesLoading} />
+                        onChange={(e) => chooseType(e.value)} placeholder={typesLoading ? 'Loading types…' : 'Choose the type'} disabled={typesLoading} />
                 </div>
                 <div className="field">
                     <label htmlFor="nd-no">Document number</label>
-                    <InputText id="nd-no" value={number} onChange={(e) => setNumber(e.target.value)} maxLength={50} />
+                    <InputText id="nd-no" value={number} onChange={(e) => setNumber(e.target.value)} maxLength={50}
+                        placeholder={numberLoading ? 'Getting the next number…' : 'Filled in when you choose the type'} />
                 </div>
                 <div className="field full">
                     <label htmlFor="nd-title">Title</label>
@@ -522,9 +574,25 @@ const NewDocumentDialog: React.FC<{
                     <InputTextarea id="nd-com" value={comments} onChange={(e) => setComments(e.target.value)} rows={2} maxLength={500} autoResize />
                 </div>
                 <div className="field full">
-                    <label htmlFor="nd-files">Files</label>
-                    <input id="nd-files" type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
-                    {files.length > 0 && <span className="hint">{files.map((f) => `${f.name} (${formatSize(f.size)})`).join(', ')}</span>}
+                    <label id="nd-files-label">
+                        Files <span className="vd-pick__count">{files.length} of {MAX_DOCUMENT_FILES}</span>
+                    </label>
+                    <input ref={fileInput} id="nd-files" type="file" multiple hidden aria-labelledby="nd-files-label"
+                        onChange={(e) => addFiles(e.target.files)} />
+                    <div className="vd-pick">
+                        {files.map((f) => (
+                            <span className="vd-pick__item" key={`${f.name}-${f.size}`}>
+                                <i className="pi pi-paperclip" aria-hidden="true" />
+                                <span className="vd-pick__name" title={f.name}>{f.name}</span>
+                                <span className="vd-pick__size">{formatSize(f.size)}</span>
+                                <Button type="button" icon="pi pi-times" text rounded className="vd-pick__remove" disabled={busy}
+                                    aria-label={`Remove ${f.name}`} onClick={() => setFiles(files.filter((x) => x !== f))} />
+                            </span>
+                        ))}
+                        <Button type="button" icon="pi pi-upload" outlined className="vd-pick__add"
+                            label={files.length === 0 ? `Add files (up to ${MAX_DOCUMENT_FILES})` : 'Add more'}
+                            disabled={busy || files.length >= MAX_DOCUMENT_FILES} onClick={() => fileInput.current?.click()} />
+                    </div>
                 </div>
             </div>
             <div className="vd-dialog-actions">

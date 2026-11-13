@@ -5,7 +5,6 @@ import { ContextMenu } from 'primereact/contextmenu';
 import { setError } from '../../../store/slices/appSlice';
 import { Dialog } from 'primereact/dialog';
 import { Toast } from 'primereact/toast';
-import { Button } from 'primereact/button';
 import { downloadAsWord } from '../../utils/DownloadManuals';
 import { downloadAsPDF } from '../../utils/DownloadManuals';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -54,7 +53,6 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
     const [DM_ManualVersionID_ToCompare, setDM_ManualVersionID_ToCompare] = useState<number>(-1);
     const [IsSingleFileDiff, setIsSingleFileDiff] = useState<boolean>(false);
     const [headerText, setHeaderText] = useState<string>('Manual Details');
-    const [showConfirmPopup, setShowConfirmPopup] = useState(false);
     const menu = useRef<ContextMenu>(null);
     const toast = useRef<Toast>(null);
     const { theme } = useTheme(); 
@@ -166,47 +164,8 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
         setVisibleCompareVersionDetailsDialog(true);
     }
 
-    const checkConfirmation = () => {
-        setShowConfirmPopup(true);
-    };
-
-    const CustomConfirmDialog = () => {
-        if (!showConfirmPopup) return null;
-        return (
-            <div className="confirm-overlay">
-                <div className="confirm-popup">
-                    <div className="confirm-header">
-                        <i className="pi pi-exclamation-triangle" /> Confirmation
-                    </div>
-                    <div className="confirm-content">
-                        Are you sure you want to {isFavourite ? 'remove this manual from' : 'add this manual to'} favourites?
-                    </div>
-                    <div className="confirm-actions">
-                        <button 
-                            className="confirm-button confirm-yes" 
-                            onClick={() => {
-                                setShowConfirmPopup(false);
-                                accept();
-                            }}
-                        >
-                            Yes
-                        </button>
-                        <button 
-                            className="confirm-button confirm-no" 
-                            onClick={() => {
-                                setShowConfirmPopup(false);
-                                reject();
-                            }}
-                        >
-                            No
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
-    const accept = async () => {
+    /** The star: adds the manual to my favourites or takes it out (no question first; a message confirms it). */
+    const toggleFavourite = async () => {
         const removing = isFavourite;
         const action = removing ? 'RemoveFromFavourite' : 'AddToFavourite';
         try {
@@ -214,7 +173,7 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
             setIsFavourite(!removing);
             toast.current?.show({
                 severity: 'success',
-                summary: 'Confirmed',
+                summary: 'Favourites',
                 detail: removing ? 'Manual removed from favourites.' : 'Manual added to favourites.',
                 life: 3000,
                 closable: true
@@ -231,173 +190,100 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
         }
     };
 
-    const reject = () => {
-        toast.current?.show({
-            severity: 'warn',
-            summary: 'Rejected',
-            detail: 'You have rejected add favourite',
-            life: 3000,
-            closable: true
-        });
-    }
-    
+    /** Status steps: Draft, then the approval step it is in (Supt, Manager, ...), then Released. */
+    const node = manualInfo.selectedManualNodeObj;
+    const statusId: number = node?.data?.dM_StatusID ?? 0;
+    const statusText: string = node?.data?.statusString ?? '';
+    const inApproval = statusId > 100 && statusId < 150;
+    const stepIndex = statusId >= 150 ? 2 : inApproval ? 1 : 0;
+    const steps = [
+        { label: 'Draft' },
+        { label: inApproval && statusText ? statusText : 'Approval' },
+        { label: 'Released' },
+    ];
+
+    /** Why Edit or Approve cannot be used right now (null when it can); shown on the button. */
+    const editBlocked: string | null = !node ? 'Select a manual first'
+        : (isManualReleased || statusId === 100) ? null
+        : statusId >= 150 ? 'This is not the current version, so it cannot be edited.'
+        : `It cannot be edited while it is waiting for ${statusText || 'approval'}. It can be edited again once it is released or sent back.`;
+    const approveBlocked: string | null = !node ? 'Select a manual first'
+        : isManualReleased ? 'Already released: there is nothing to approve.'
+        : statusId === 100 ? 'A draft goes for approval from Edit > Publish.'
+        : null;
+
     return (
-       <div className="manuals-content" style={{ overflowY: 'auto' }}>
+       <div className="manuals-content">
         <Toast ref={toast} />
         <div className='sectionDiv'>
-            <div className='selectedTextDiv'>
-                <div className="left-section" style={{flexDirection: 'row' }}>
-                    <div style={{flexDirection: 'row', display: 'inline-flex', alignItems: 'left', verticalAlign: 'middle'}}>
-                        <span className='selectedText' >Selected Manual :&nbsp;</span>
-                    </div>
-                    <div style={{flexDirection: 'row', display: 'inline-flex', alignItems: 'left', verticalAlign: 'middle'}}>
-                        <label className='selectedTextHighlight'
-                        title={
-                            manualInfo.selectedManualNodeObj
-                            ? manualInfo.selectedManualNodeObj.label
-                            : ''
-                          }
-                        >
-                        {manualInfo.selectedManualNodeObj
-                            ? manualInfo.selectedManualNodeObj.label
-                            : ''}
-                        </label>
-                    </div>
+            <header className="mc-head">
+                <div className="mc-head__main">
+                    <h2 className="mc-title" title={node?.label ?? ''}>{node?.label || 'No manual selected'}</h2>
+                    {node && (
+                        <div className="mc-meta">
+                            <span className="mc-tag" title="Category">{node.data?.category || 'No category'}</span>
+                            <span className="mc-tag" title="Version">Version {node.data?.manualVersion || '–'}</span>
+                            <span className="mc-meta__item" title="Last updated">
+                                <i className="pi pi-calendar" aria-hidden="true" /> Updated {formatDate(node.data?.lastUpdated)}
+                            </span>
+                            {manualID > 0 && <ManualRelatedCirculars manualId={manualID} compact />}
+                        </div>
+                    )}
                 </div>
-                <div className="right-section">
-                    <button
-                        type="button"
-                        className="info-icon-btn"
-                        title="Manual details"
-                        aria-label="Manual details"
-                        onClick={() => setVisibleManualDetailsDialog(true)}
-                    >
+                <div className="mc-head__tools" role="toolbar" aria-label="Manual tools">
+                    <button type="button" className={`mc-icon${isFavourite ? ' is-on' : ''}`} onClick={toggleFavourite} disabled={manualID <= 0}
+                        aria-pressed={isFavourite} title={isFavourite ? 'Remove from my favourites' : 'Add to my favourites'}>
+                        <i className={isFavourite ? 'pi pi-star-fill' : 'pi pi-star'} aria-hidden="true" />
+                    </button>
+                    <button type="button" className="mc-icon" title="Manual details" aria-label="Manual details" disabled={!node}
+                        onClick={() => setVisibleManualDetailsDialog(true)}>
                         <i className="pi pi-info-circle" aria-hidden="true" />
                     </button>
                     <ContextMenu model={contextMenuItems} ref={menu} style={{ minWidth: '150px' }} />
-                    <button
-                        type="button"
-                        className="download-icon-btn"
-                        title="Download Manual"
-                        onClick={e => menu.current?.show(e)}
-                    >
-                        <img src="/download1.png" alt="Download" className="download-icon" />
+                    <button type="button" className="mc-icon" title="Download as PDF or Word" aria-label="Download" disabled={!node}
+                        onClick={e => menu.current?.show(e)}>
+                        <i className="pi pi-download" aria-hidden="true" />
                     </button>
-                    <Button
-                        icon="pi pi-history"
-                        rounded
-                        tooltip="Version History"
-                        onClick={() => setVisibleVersionHistoryDialog(true)}
-                        severity="info"
-                         style={{
-                            fontSize: '1rem',
-                            whiteSpace: 'nowrap',
-                            height: '2.5rem',
-                            lineHeight: '1.2rem'
-                        }}
-                    />
-                    <Button
-                        icon={isFavourite ? "pi pi-star-fill" : "pi pi-star"}
-                        label={isFavourite ? "Remove from Favourite" : "Add to Favourite"}
-                        className={`p-button-rounded p-button-lg ${isFavourite ? 'p-button-danger' : 'p-button-warning'}`}
-                        style={{
-                            fontSize: '1rem',
-                            minWidth: 170,
-                            whiteSpace: 'nowrap',
-                            height: '2.5rem', 
-                            lineHeight: '1.2rem'
-                        }}
-                        onClick={checkConfirmation}
-                        disabled={manualID <= 0}
-                    />
+                    <button type="button" className="mc-icon" title="Version history" aria-label="Version history" disabled={!node}
+                        onClick={() => setVisibleVersionHistoryDialog(true)}>
+                        <i className="pi pi-history" aria-hidden="true" />
+                    </button>
                 </div>
-            </div>
-            {manualID > 0 && <ManualRelatedCirculars manualId={manualID} />}
-            <div style={{ flexDirection: 'row', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{flexDirection: 'row'}}>
-                    { manualInfo.selectedManualNodeObj &&
-                         <div className="header-meta" style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '4px' }}>
-                            <span className="badge category-badge"
-                                style={{
-                                    padding: '0.5rem 1rem',
-                                    borderRadius: '20px',
-                                    fontSize: '0.875rem',
-                                    fontWeight: '600',
-                                    background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-                                    color: 'white',
-                                    border: 'none'
-                                }}
-                            >
-                                {manualInfo.selectedManualNodeObj.data?.category || ' -- '}
-                            </span>
-                            <span className="badge version-badge"
-                                style={{
-                                    padding: '0.5rem 1rem',
-                                    borderRadius: '20px',
-                                    fontSize: '0.875rem',
-                                    fontWeight: '600',
-                                    background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-                                    color: 'white',
-                                    border: 'none'
-                                }}
-                            >
-                                Version {manualInfo.selectedManualNodeObj.data?.manualVersion || ' -- '}
-                            </span>
-                            <span className="update-date">
-                                <i className="pi pi-calendar"></i>
-                                Last updated: {formatDate(manualInfo.selectedManualNodeObj.data?.lastUpdated)}
-                            </span>
-                        </div>
-                    }
-                    <div className="header-meta" style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '4px' }}>
-                        <span style={{ fontWeight: '600', fontSize: '16px', display:'inline-flex' }}>Status :&nbsp;</span>
-                        <span style={{ fontWeight: 'bold', fontSize: '18px', fontStyle:'bold', width:'300px', display:'inline-flex' }}>
-                        {manualInfo.selectedManualNodeObj
-                            ? manualInfo.selectedManualNodeObj.data.statusString
-                            : ''}
+            </header>
+            {node && (
+                <div className="mc-bar">
+                    <ol className="mc-steps" aria-label={`Status: ${statusText}`}>
+                        {steps.map((s, i) => (
+                            <li key={s.label} className={i < stepIndex ? 'is-done' : i === stepIndex ? 'is-current' : ''}
+                                aria-current={i === stepIndex ? 'step' : undefined}>
+                                <span className="mc-steps__dot" aria-hidden="true">{i < stepIndex ? <i className="pi pi-check" /> : i + 1}</span>
+                                <span className="mc-steps__label">{s.label}</span>
+                            </li>
+                        ))}
+                    </ol>
+                    <label className="mc-check" title="Show the sections below this manual in the text too">
+                        <input type="checkbox" checked={isChecked} onChange={e => { setIsChecked(e.target.checked); }} />
+                        Show sub-sections
+                    </label>
+                    <div className="mc-actions">
+                        <button type="button" className="mc-btn" onClick={() => setVisibleCompareVersionDialog(true)}>
+                            <i className="pi pi-clone" aria-hidden="true" /> Compare versions
+                        </button>
+                        <span className="mc-btn-wrap" title={editBlocked ?? 'Edit this manual'}>
+                            <button type="button" className="mc-btn" onClick={() => { setVisibleAddEditDialog(true); }} disabled={!!editBlocked}>
+                                <i className="pi pi-pencil" aria-hidden="true" /> Edit
+                            </button>
                         </span>
-
-                        <label style={{ marginLeft: '5px', width: '220px', display: 'inline-block', fontSize: '18px', fontStyle:'normal' }}>
-                            <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={e => { setIsChecked(e.target.checked); }}
-                                className="large-checkbox"
-                                style={{ marginLeft: '6px', marginRight: '4px', verticalAlign: 'middle' }}
-                            />
-                            Include Sub Manual
-                        </label>
+                        <span className="mc-btn-wrap" title={approveBlocked ?? 'Approve it, or send it back with a comment'}>
+                            <button type="button" className="mc-btn mc-btn--primary" onClick={() => setVisibleApproveManualDialog(true)} disabled={!!approveBlocked}>
+                                <i className="pi pi-check" aria-hidden="true" /> Approve or send back
+                            </button>
+                        </span>
                     </div>
+                    {editBlocked && approveBlocked == null && <p className="mc-hint"><i className="pi pi-info-circle" aria-hidden="true" /> {editBlocked}</p>}
                 </div>
-                <div style={{flexDirection: 'row', display: 'block', alignItems: 'right'}}>
-                    <button
-                        className="manual-action-btn"
-                        onClick={() => setVisibleCompareVersionDialog(true)}
-                        type="button"
-                    >
-                        Compare Version
-                    </button>
-                    <button
-                        className="manual-action-btn"
-                        onClick={() => { setVisibleAddEditDialog(true); }}
-                        type="button"
-                        style={{ width: '100px', marginRight: '8px' }}
-                        disabled = {!isManualReleased && manualInfo.selectedManualNodeObj?.data?.dM_StatusID !== 100}
-                    >
-                        Edit
-                    </button>
-                    <button
-                        className="manual-action-btn"
-                        onClick={() => setVisibleApproveManualDialog(true)}
-                        type="button"
-                        style={{ width:'120px'}}
-                        disabled = {isManualReleased || manualInfo.selectedManualNodeObj?.data?.dM_StatusID === 100}
-                    >
-                        Approve
-                    </button>
-                </div>
-            </div>
-            <div className='sectiontext'>
+            )}
+            <div className='sectiontext mc-reader'>
                  {manualInfo.selectedManualNodeObj ? (
                     <JoditEditor
                         value={manualText}
@@ -449,9 +335,9 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
         {visibleManualDetailsDialog && (
             <Dialog
                 className="manual-details-dialog"
-                header={'Manual Details '}
+                header={'Manual details'}
                 visible={visibleManualDetailsDialog}
-                style={{ width: '1250px', minWidth: '90vh', height: '100vh', maxHeight: '95vh' }}
+                style={{ width: '1100px', maxWidth: '96vw', maxHeight: '92vh' }}
                 contentStyle={{ padding: '0.5rem', backgroundColor: '#e5eefbff' }}
                 onHide={() => { if (!visibleManualDetailsDialog) return; setVisibleManualDetailsDialog(false); }}>
                 <ManualDetails 
@@ -481,7 +367,7 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
            <Dialog header={headerText}
             className="manual-edit-dialog"
             visible={visibleAddEditDialog}
-            style={{ width: '60%', height: '220vh' }}
+            style={{ width: 'min(1200px, 96vw)', height: '92vh' }}
             contentStyle={{ padding: '0.1rem', backgroundColor: '#e5eefbff' }}
             headerStyle={{ backgroundColor: '#d2e3f9ff', borderBottom: '3px solid blue' , height: '40px'}}
             onHide={() => { if (!visibleAddEditDialog) return; setVisibleAddEditDialog(false); }}>
@@ -505,7 +391,6 @@ const ManualsContent: React.FC<ManualDetailsProps> = ({userId, onRefreshTree})  
                 <ManualVersionHistory closeForm={() => setVisibleVersionHistoryDialog(false)} />
             </Dialog>
         )}
-        {showConfirmPopup && <CustomConfirmDialog />}
         </div>
     );
 };

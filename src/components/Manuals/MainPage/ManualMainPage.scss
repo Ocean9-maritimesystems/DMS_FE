@@ -878,3 +878,117 @@
   .manual-link-list .link-list-heading { padding: 10px 8px; }
   .manual-link-list .link-list-heading p { max-width: 220px; }
 }
+
+/* Manual tree: quick filters as chips above it, search with tools beside it, number column in the labels. */
+.tree-section .manual-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 8px 4px;
+  background: var(--bg-secondary);
+}
+
+.tree-section .manual-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  i { font-size: 0.75rem; color: var(--primary-color); }
+
+  &__count {
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+    color: var(--primary-color);
+    text-align: center;
+  }
+
+  &:hover { border-color: var(--primary-color); color: var(--primary-color); }
+
+  &.is-empty { opacity: 0.55; }
+  &.is-empty .manual-filter__count { background: transparent; color: var(--text-muted); }
+
+  &.is-on {
+    opacity: 1;
+    border-color: var(--primary-color);
+    background: var(--primary-color);
+    color: #fff;
+
+    i, .manual-filter__count { color: #fff; }
+    .manual-filter__count { background: rgba(255, 255, 255, 0.2); }
+  }
+
+  &__clear { font-size: 0.65rem !important; }
+}
+
+.tree-maincontainer > .p-inputgroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+
+  .tree-search {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+
+    > i {
+      position: absolute;
+      top: 50%;
+      left: 10px;
+      transform: translateY(-50%);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .p-inputtext {
+      width: 100%;
+      height: 34px;
+      padding-left: 30px;
+      border-radius: 8px !important;
+    }
+  }
+
+  .tree-tools { display: flex; gap: 2px; }
+
+  .tree-tool-btn.p-button {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    color: var(--text-secondary);
+
+    &:hover { color: var(--primary-color); }
+  }
+}
+
+.custom-tree .tree-label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  line-height: 1.35;
+
+  &__no {
+    flex: none;
+    min-width: 2.6em;
+    color: var(--text-muted);
+    font-size: 0.85em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__name { min-width: 0; white-space: normal; }
+}
+
+.custom-tree .p-highlight .tree-label__no { color: inherit; opacity: 0.8; }

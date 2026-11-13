@@ -944,3 +944,40 @@
     .inbox-reader-head, .inbox-reader-body { padding-left: 16px; padding-right: 16px; }
   }
 }
+
+/* Manual screen: the related circulars as one chip in the info row; the list opens in a pop-over. */
+.related-circulars-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+
+  strong { color: var(--text-primary); }
+  .feature-tag { margin: 0; }
+  &:hover { border-color: var(--primary-color); color: var(--primary-color); }
+  &.is-muted { opacity: 0.75; }
+}
+
+.related-circulars-pop .p-overlaypanel-content { padding: 0; }
+.related-circulars-pop .related-circulars { margin: 0; border: 0; box-shadow: none; }
+
+.related-circulars-more {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary-color);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+
+  &:hover { text-decoration: underline; }
+}

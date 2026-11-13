@@ -1,4 +1,5 @@
 import DOMPurify from 'dompurify';
+import { tidyWordBullets } from './wordBullets';
 
 /**
  * Manual text is HTML written in the editor and stored as it was typed or pasted. Before it is shown or saved,
@@ -11,8 +12,9 @@ const MANUAL_HTML_CONFIG = {
     ALLOW_DATA_ATTR: false,
 };
 
+/** Also turns bullets pasted from Word (shown as empty boxes) into real lists: see tidyWordBullets. */
 export const sanitizeHtml = (html: string | null | undefined): string =>
-    html ? DOMPurify.sanitize(html, MANUAL_HTML_CONFIG) : '';
+    html ? DOMPurify.sanitize(tidyWordBullets(html), MANUAL_HTML_CONFIG) : '';
 
 /**
  * A whole printable page (with its own <style> block), e.g. the PDF export of a manual.

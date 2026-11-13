@@ -253,3 +253,90 @@
         animation: none;
     }
 }
+
+/* The manual being approved first, comment with a hint (required to send back), Cancel on the left, actions on the right. */
+.approve-manual-body .am-summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 1.25rem;
+    padding: 12px 14px;
+    border: 1px solid var(--border-color, #dee2e6);
+    border-radius: 10px;
+    background: var(--bg-primary, #f8f9fa);
+
+    &__icon {
+        display: grid;
+        place-items: center;
+        flex: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--primary-color, #007bff) 12%, transparent);
+        color: var(--primary-color, #007bff);
+        font-size: 1.1rem;
+    }
+
+    &__text { min-width: 0; }
+
+    &__name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: var(--text-primary, #212529);
+    }
+
+    &__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+}
+
+.am-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary-color, #007bff) 10%, transparent);
+    color: var(--primary-color, #007bff);
+    font-size: 0.78rem;
+    font-weight: 600;
+
+    i { font-size: 0.7rem; }
+
+    &--status {
+        background: color-mix(in srgb, var(--warning-color, #d97706) 14%, transparent);
+        color: var(--warning-color, #d97706);
+    }
+}
+
+.approve-manual-section { margin-bottom: 0.5rem; }
+.approve-manual-section .section-title { margin-bottom: 0.4rem; color: var(--text-primary, #212529); font-size: 0.9rem; }
+.approve-manual-comment { font-size: 0.95rem; }
+.approve-manual-comment.is-invalid { border-color: var(--danger-color, #dc3545); box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger-color, #dc3545) 20%, transparent); }
+
+.am-hint {
+    margin: 6px 0 0;
+    font-size: 0.8rem;
+    color: var(--text-muted, #94a3b8);
+
+    &.is-error { color: var(--danger-color, #dc3545); font-weight: 600; }
+}
+
+.approve-manual-actions {
+    align-items: center;
+    gap: 0.6rem;
+
+    .am-spacer { flex: 1; }
+
+    .p-button { padding: 0.6rem 1.1rem; gap: 0.4rem; }
+    .p-button:hover { transform: none; }
+
+    .p-button.am-cancel { color: var(--text-secondary, #475467) !important; background: transparent !important; box-shadow: none !important; }
+
+    .p-button.am-sendback {
+        background: transparent !important;
+        border: 1px solid var(--danger-color, #dc3545) !important;
+        color: var(--danger-color, #dc3545) !important;
+    }
+}

@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Dropdown } from 'primereact/dropdown';
-import { ContextMenu } from 'primereact/contextmenu';
 import { getDocument } from 'pdfjs-dist';
 import { GlobalWorkerOptions } from 'pdfjs-dist';
 import { Checkbox } from 'primereact/checkbox';
@@ -83,10 +82,20 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
     const [form, setForm] = useState<ManualFormData>(initialData || defaultData);
     const [categoryOptions, setCategoryOptions] = useState<{ label: string; value: string }[]>([]);
     const [approvalFlowOptions, setApprovalFlowOptions] = useState<{ label: string; value: number }[]>([]);
-    const menu = useRef<ContextMenu>(null);
+    const pdfInput = useRef<HTMLInputElement>(null);
+    const [problem, setProblem] = useState<string | null>(null);
+    /** The manual code last filled in from the category; a code the user typed is never replaced. */
+    const autoCodeRef = useRef('');
+    const codeRequestRef = useRef(0);
 
-    const config = {
+    // Made once: a new config object on every render made the editor start again (losing what was just pasted or typed).
+    const config = useMemo(() => ({
         readonly: false,
+        // Paste straight in. Jodit's "keep as HTML / insert as text?" question opened behind this dialog, so a paste
+        // never finished. Word formatting is tidied when the text is saved (sanitizeHtml / tidyWordBullets).
+        askBeforePasteHTML: false,
+        askBeforePasteFromWord: false,
+        defaultActionOnPaste: 'insert_as_html' as const,
         height: 'clamp(280px, 48vh, 420px)',
         toolbar: true,
         placeholder: '',
@@ -104,12 +113,7 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
             fontSize: '14px',
             lineHeight: '1.6'
         }
-    };
-
-    const contextMenuItems = [
-        { label: 'PDF', icon: 'pi pi-file-pdf', disabled: true },
-        { label: 'Word', icon: 'pi pi-file-word', disabled: true }
-    ];
+    }), []);
 
     useEffect(() => {
         dmsLifecycleService.getApiCall<{ categoryName: string; dM_CategoryID: string }[] | null>('Manuals/GetManualCategory')
@@ -184,19 +188,48 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
         }
     }, [selectedAction, selectedManualID, selectedManualVersionID]);
 
+    /** Like the circular number: choosing a category on a new manual fills in its next manual code. */
+    const handleCategoryChange = (categoryID: string) => {
+        setForm(prev => ({ ...prev, DM_CategoryID: categoryID }));
+        if (!categoryID || selectedAction === 'Edit') return;
+        const requestId = ++codeRequestRef.current;
+        dmsLifecycleService.getApiCall<{ manualCode?: string } | null>(`Manuals/GetNextManualCode?categoryId=${encodeURIComponent(categoryID)}`)
+            .then(data => {
+                const code = data?.manualCode ?? '';
+                if (requestId !== codeRequestRef.current || !code) return;
+                const previous = autoCodeRef.current;
+                autoCodeRef.current = code;
+                setForm(prev => (prev.ManualCode.trim() === '' || prev.ManualCode === previous ? { ...prev, ManualCode: code } : prev));
+            })
+            .catch(() => {
+                console.error('Failed to fetch the next manual code');
+            });
+    };
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setForm(prev => ({ ...prev, [name]: value }));
     };
 
+    /** What has to be filled in before it can be saved (null when nothing). */
+    const check = (): string | null => {
+        if (!form.ManualName.trim()) return 'Enter the manual name.';
+        if (form.IsApprovalRequired === 1 && !(form.Approval_FlowID > 0)) return 'Choose the approval flow, or untick "Approval required".';
+        return null;
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSubmit(form);
+        const p = check();
+        setProblem(p);
+        if (!p) onSubmit(form);
     };
 
     const handlePublish = (e: React.MouseEvent<HTMLButtonElement>) => {
         e.preventDefault();
-        onSubmit({ ...form, IsToPublish: true });
+        const p = check();
+        setProblem(p);
+        if (!p) onSubmit({ ...form, IsToPublish: true });
     };
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -204,6 +237,7 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
             return;
         }
         const file = e.target.files[0];
+        e.target.value = ''; // the same file can be imported again
         if (file && file.type === 'application/pdf') {
             const reader = new FileReader();
             reader.onload = async () => {
@@ -224,131 +258,120 @@ const AddEditManual: React.FC<ManualFormProps> = ({ initialData, onSubmit, close
     }
 
     return (
-        <form onSubmit={handleSubmit} className="add-edit-manual-form">
-            <div className="manual-form-toolbar" style={{ marginBottom: '1px', width: '100%', flexDirection: 'row', display: 'flex', justifyContent: 'space-between' }}>
-                <div className="manual-form-status" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-                    <label style={{ fontWeight: 'bold', width: '75px' }}>Status : </label>
-                    <label className='selectedTextHighlight' style={{width: '350px'}}> {form.StatusString}</label>
-                </div>
-                <div className="manual-form-actions d-flex justify-content-end" style={{ textAlign: 'right', width: '100%' }}>
-                    <button type="button" className="button" onClick={handlePublish}>Publish</button> &nbsp;&nbsp;
-                    <button type="submit" className="button">Save</button>
-                    <button type="button" className="button btn-secondary ms-2" onClick={closeForm}>
-                        Cancel
+        <form onSubmit={handleSubmit} className="add-edit-manual-form mf" noValidate>
+            <div className="mf-bar">
+                <span className="mf-status" title="Status">{form.StatusString || 'NEW'}</span>
+                {problem && <span className="mf-problem" role="alert"><i className="pi pi-exclamation-circle" aria-hidden="true" /> {problem}</span>}
+                <div className="mf-bar__actions">
+                    <button type="button" className="mf-btn mf-btn--text" onClick={closeForm}>Cancel</button>
+                    <button type="submit" className="mf-btn" title="Save; it stays a draft until it is published">
+                        <i className="pi pi-save" aria-hidden="true" /> Save draft
+                    </button>
+                    <button type="button" className="mf-btn mf-btn--primary" onClick={handlePublish}
+                        title="Save and send it for approval (or release it, when no approval is needed)">
+                        <i className="pi pi-send" aria-hidden="true" /> Publish
                     </button>
                 </div>
             </div>
-            <div className="manual-form-body" style={{ display: 'flex', gap: '5px', marginTop: '10px' }}>
-                <div className="manual-form-main" style={{ flex: 1, minWidth: '650px', textAlign: 'left' }}>
-                    <div className="row" >
-                        <div className="manual-form-row category-row" style={{ display: 'flex', gap: '20px', flexDirection: 'row' }}>
-                            <div className="manual-form-group">
-                                <label
-                                    style={{ width: '110px', flexShrink: 0 }}>Category</label>
-                                <Dropdown
-                                    className="dropdown-compact"
-                                    value={form.DM_CategoryID}
-                                    options={categoryOptions}
-                                    onChange={e => setForm(prev => ({ ...prev, DM_CategoryID: e.value }))}
-                                    placeholder="Select a Category"
-                                    style={{ width: '450px' }}
-                                />
-                            </div>
-                            <div className="manual-form-group2" style={{ display: 'flex', textAlign: 'center'}}>
-                                <Checkbox
-                                    className="dropdown-compact"
-                                    checked={form.IsMainTitle === 1}
-                                    onChange={e => setForm(prev => ({ ...prev, IsMainTitle: e.checked ? 1 : 0 }))}
-                                />
-                                <label style={{ width: '120px', textAlign: 'left', marginLeft: '5px' }}>Main Title</label>
-                                <Checkbox
-                                    className="dropdown-compact"
-                                    checked={form.CanExport === 1}
-                                    onChange={e => setForm(prev => ({ ...prev, CanExport: e.checked ? 1 : 0 }))}
-                                />
-                                <label style={{ width: '150px', textAlign: 'left', marginLeft: '5px' }}>Allow Export</label>
-                            </div>
-                        </div>
-                        <div className="manual-form-row code-row" style={{ display: 'flex', gap: '20px', flexDirection: 'row' }}>
-                            <div className="manual-form-group">
-                                <label
-                                    style={{ width: '110px', flexShrink: 0 }}>Manual Code</label>
-                                <input
-                                    className="form-control"
-                                    name="ManualCode"
-                                    value={form.ManualCode}
-                                    onChange={handleChange}
-                                    style={{ width: '450px' }}
-                                />
-                            </div>
-                            <div className="manual-form-group2" style={{ display: 'flex', textAlign: 'center'}}>
-                                <Checkbox
-                                    className="dropdown-compact"
-                                    checked={form.IsAcknowledgementRequired === 1}
-                                    onChange={e => setForm(prev => ({ ...prev, IsAcknowledgementRequired: e.checked ? 1 : 0 }))}
-                                />
-                                <label style={{ width: '250px', textAlign: 'left', marginLeft: '5px' }}>Acknowledgement Required</label>
-                            </div>
-                        </div>
-                        <div className="manual-form-group manual-name-row">
-                            <label style={{ width: '110px', flexShrink: 0 }}>Manual Name</label>
-                            <input
-                                className="form-control"
-                                name="ManualName"
-                                value={form.ManualName}
-                                onChange={handleChange}
-                                style={{ width: '770px' }}
-                            />
-                        </div>
-                        <div className="manual-form-row approval-row" style={{ display: 'flex', gap: '20px', flexDirection: 'row', height: '100px' }}>
-                            <div className="manual-form-group">
-                                <label style={{ width: '110px', flexShrink: 0 }}>Aprpoval Flow</label>
-                                <Checkbox
-                                    className="dropdown-compact"
-                                    checked={form.IsApprovalRequired === 1}
-                                    onChange={e => {
-                                        const checked = !!e.checked;
-                                        setForm(prev => ({
-                                            ...prev,
-                                            IsApprovalRequired: checked ? 1 : 0,
-                                            Approval_FlowID: checked ? prev.Approval_FlowID : -1
-                                        }));
-                                    }}
-                                />
-                                <label style={{ width: '150px', textAlign: 'left', marginLeft: '5px' }}>Approval Required</label>
-                                <Dropdown
-                                    className="dropdown-compact"
-                                    value={form.Approval_FlowID}
-                                    options={approvalFlowOptions}
-                                    onChange={e => setForm(prev => ({ ...prev, Approval_FlowID: e.value }))}
-                                    placeholder="Select a flow"
-                                    style={{ width: '250px', height: '40px' }}
-                                    disabled={!form.IsApprovalRequired} 
-                                />
-                            </div>
-                            {form.Approval_FlowID > 0 && (
-                                <div className="manual-form-group2" style={{ display: 'flex', textAlign: 'center'}}>
-                                    <ApprovalFlow currentFlow={form.Approval_FlowID} />
-                                </div>
-                            )}
-                        </div>
-                        <div className="manual-form-group1 context-section">
-                            <div className="manual-form-group">
-                                <label style={{ width: '110px', flexShrink: 0 }}>Context</label>
-                                <ContextMenu model={contextMenuItems} ref={menu} style={{ minWidth: '150px' }} />
-                                <a onClick={e => menu.current?.show(e)} style={{ marginLeft: '5px', fontSize: '16px' }}>Import</a>
-                                <input type="file" accept="application/pdf" onChange={handleFileChange} />
-                            </div>
-                            <div className="col-sm-9" style={{ width: '100%', height: '355px' }}>
-                                <JoditEditor
-                                    config={config}
-                                    value={form.TextContents}
-                                    tabIndex={1}
-                                    onBlur={newContent => setForm(prev => ({ ...prev, TextContents: sanitizeHtml(newContent) }))}
-                                />
-                            </div>
-                        </div>
+
+            <div className="mf-grid">
+                <div className="mf-field">
+                    <label htmlFor="mf-category">Category</label>
+                    <Dropdown
+                        inputId="mf-category"
+                        value={form.DM_CategoryID}
+                        options={categoryOptions}
+                        onChange={e => handleCategoryChange(e.value)}
+                        placeholder="Choose a category"
+                        filter={categoryOptions.length > 8}
+                    />
+                </div>
+                <div className="mf-field">
+                    <label htmlFor="mf-code">Manual code</label>
+                    <input
+                        id="mf-code"
+                        className="form-control"
+                        name="ManualCode"
+                        value={form.ManualCode}
+                        onChange={handleChange}
+                        maxLength={20}
+                        placeholder={selectedAction === 'Edit' ? '' : 'Filled in when you choose the category'}
+                    />
+                </div>
+                <div className="mf-field mf-field--wide">
+                    <label htmlFor="mf-name">Manual name <span className="mf-req" aria-hidden="true">*</span></label>
+                    <input
+                        id="mf-name"
+                        className={`form-control${problem && !form.ManualName.trim() ? ' is-invalid' : ''}`}
+                        name="ManualName"
+                        value={form.ManualName}
+                        onChange={handleChange}
+                        maxLength={250}
+                        aria-required="true"
+                    />
+                </div>
+            </div>
+
+            <fieldset className="mf-options">
+                <legend>Options</legend>
+                <label className="mf-check">
+                    <Checkbox checked={form.IsMainTitle === 1} onChange={e => setForm(prev => ({ ...prev, IsMainTitle: e.checked ? 1 : 0 }))} />
+                    <span>Main title</span>
+                </label>
+                <label className="mf-check">
+                    <Checkbox checked={form.CanExport === 1} onChange={e => setForm(prev => ({ ...prev, CanExport: e.checked ? 1 : 0 }))} />
+                    <span>Allow export<small>Can be downloaded as PDF or Word</small></span>
+                </label>
+                <label className="mf-check">
+                    <Checkbox checked={form.IsAcknowledgementRequired === 1} onChange={e => setForm(prev => ({ ...prev, IsAcknowledgementRequired: e.checked ? 1 : 0 }))} />
+                    <span>Acknowledgement required<small>Readers must confirm they have read it</small></span>
+                </label>
+                <label className="mf-check">
+                    <Checkbox
+                        checked={form.IsApprovalRequired === 1}
+                        onChange={e => {
+                            const checked = !!e.checked;
+                            setForm(prev => ({
+                                ...prev,
+                                IsApprovalRequired: checked ? 1 : 0,
+                                Approval_FlowID: checked ? prev.Approval_FlowID : -1
+                            }));
+                        }}
+                    />
+                    <span>Approval required<small>Goes through an approval flow before release</small></span>
+                </label>
+                {form.IsApprovalRequired === 1 && (
+                    <div className="mf-flow">
+                        <label htmlFor="mf-flow">Approval flow <span className="mf-req" aria-hidden="true">*</span></label>
+                        <Dropdown
+                            inputId="mf-flow"
+                            className={problem && form.Approval_FlowID <= 0 ? 'p-invalid' : ''}
+                            value={form.Approval_FlowID > 0 ? form.Approval_FlowID : null}
+                            options={approvalFlowOptions}
+                            onChange={e => setForm(prev => ({ ...prev, Approval_FlowID: e.value }))}
+                            placeholder="Choose a flow"
+                        />
+                        {form.Approval_FlowID > 0 && <div className="mf-flow__steps"><ApprovalFlow currentFlow={form.Approval_FlowID} /></div>}
                     </div>
+                )}
+            </fieldset>
+
+            <div className="mf-content">
+                <div className="mf-content__head">
+                    <span className="mf-content__title">Content</span>
+                    <input ref={pdfInput} type="file" accept="application/pdf" hidden onChange={handleFileChange} />
+                    <button type="button" className="mf-btn mf-btn--small" onClick={() => pdfInput.current?.click()}
+                        title="Puts the text of the PDF's first page into the editor">
+                        <i className="pi pi-file-pdf" aria-hidden="true" /> Import text from a PDF
+                    </button>
+                </div>
+                <div className="mf-editor">
+                    <JoditEditor
+                        config={config}
+                        value={form.TextContents}
+                        tabIndex={1}
+                        onBlur={newContent => setForm(prev => ({ ...prev, TextContents: sanitizeHtml(newContent) }))}
+                    />
                 </div>
             </div>
         </form>

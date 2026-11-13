@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AutoComplete } from 'primereact/autocomplete';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
 import { InputNumber } from 'primereact/inputnumber';
 import { InputText } from 'primereact/inputtext';
 import { InputTextarea } from 'primereact/inputtextarea';
+import { OverlayPanel } from 'primereact/overlaypanel';
 import { SelectButton } from 'primereact/selectbutton';
 import featureApi, { CircularExtras, CircularManualLink, itemLink, SearchHit } from '../../services/featureApi';
 import { errorMessage } from '../../services/DMSLifecycleService';
@@ -383,11 +384,14 @@ const CancelDialog: React.FC<{ circularId: number; isDraft?: boolean; onHide: ()
 
 /**
  * On a manual: the circulars and alerts that amend or refer to it. Hidden when there are none.
- * A circular opens in a popup, so the manual stays on screen.
+ * A circular opens in a popup, so the manual stays on screen. Cancelled circulars are hidden until asked for.
+ * compact: a small chip ("Circulars & alerts 2 · 1 open") that opens the list in a pop-over, for the manual's info row.
  */
-export const ManualRelatedCirculars: React.FC<{ manualId: number }> = ({ manualId }) => {
+export const ManualRelatedCirculars: React.FC<{ manualId: number; compact?: boolean }> = ({ manualId, compact }) => {
     const [links, setLinks] = useState<CircularManualLink[]>([]);
     const [preview, setPreview] = useState<CircularManualLink | null>(null);
+    const [showCancelled, setShowCancelled] = useState(false);
+    const panel = useRef<OverlayPanel>(null);
 
     const load = useCallback(async () => {
         if (!manualId || manualId <= 0) { setLinks([]); return; }
@@ -406,6 +410,8 @@ export const ManualRelatedCirculars: React.FC<{ manualId: number }> = ({ manualI
     const isDraft = (l: CircularManualLink) => l.circularStatus === 'Draft' || l.circularStatus === 'Temp';
     const isAlert = (l: CircularManualLink) => !!l.circularType?.toLowerCase().startsWith('alert');
     const open = links.filter((l) => l.isActive && l.circularStatus !== 'Cancelled' && !isDraft(l));
+    const cancelledCount = links.filter((l) => l.circularStatus === 'Cancelled').length;
+    const listed = showCancelled ? links : links.filter((l) => l.circularStatus !== 'Cancelled');
 
     const closeLinks = async () => {
         try {
@@ -417,8 +423,8 @@ export const ManualRelatedCirculars: React.FC<{ manualId: number }> = ({ manualI
         }
     };
 
-    return (
-        <div className="feature-card extras-panel related-circulars">
+    const body = (
+        <>
             <div className="related-circulars-head">
                 <h4><i className="pi pi-megaphone" /> Related circulars and alerts
                     {open.length > 0 && <span className="feature-tag warn">{open.length} open amendment{open.length === 1 ? '' : 's'}</span>}
@@ -429,7 +435,7 @@ export const ManualRelatedCirculars: React.FC<{ manualId: number }> = ({ manualI
                 )}
             </div>
             <div className="extras-links">
-                {links.map((l) => {
+                {listed.map((l) => {
                     const link = itemLink(isAlert(l) ? 'Alert' : 'Circular', l.ciR_MasterID);
                     return (
                         <div key={l.ciR_ManualLinkID} className="link-line">
@@ -454,6 +460,42 @@ export const ManualRelatedCirculars: React.FC<{ manualId: number }> = ({ manualI
                 })}
             </div>
 
+            {cancelledCount > 0 && (
+                <button type="button" className="related-circulars-more" onClick={() => setShowCancelled((v) => !v)}>
+                    {showCancelled ? 'Hide cancelled' : `Show ${cancelledCount} cancelled`}
+                </button>
+            )}
+        </>
+    );
+
+    if (compact) {
+        const shown = links.length - cancelledCount;
+        return (
+            <>
+                <button type="button" className={`related-circulars-chip${shown === 0 ? ' is-muted' : ''}`} onClick={(e) => panel.current?.toggle(e)}
+                    aria-haspopup="dialog" title="Circulars and alerts that amend or refer to this manual">
+                    <i className="pi pi-megaphone" aria-hidden="true" />
+                    {shown > 0 ? <>Circulars &amp; alerts <strong>{shown}</strong></> : <>{cancelledCount} cancelled circular{cancelledCount === 1 ? '' : 's'}</>}
+                    {open.length > 0 && <span className="feature-tag warn">{open.length} open</span>}
+                    <i className="pi pi-angle-down" aria-hidden="true" />
+                </button>
+                <OverlayPanel ref={panel} className="related-circulars-pop" style={{ width: 'min(560px, 92vw)' }}>
+                    <div className="feature-card extras-panel related-circulars">
+{body}
+                    </div>
+                </OverlayPanel>
+                {preview && (
+                    <CircularPreviewDialog circularId={preview.ciR_MasterID} number={preview.circularNumber} title={preview.circularTitle}
+                        isAlert={isAlert(preview)} linkTypeText={linkTypeText(preview.linkType)} remarks={preview.remarks}
+                        onHide={() => setPreview(null)} />
+                )}
+            </>
+        );
+    }
+
+    return (
+        <div className="feature-card extras-panel related-circulars">
+            {body}
             {preview && (
                 <CircularPreviewDialog circularId={preview.ciR_MasterID} number={preview.circularNumber} title={preview.circularTitle}
                     isAlert={isAlert(preview)} linkTypeText={linkTypeText(preview.linkType)} remarks={preview.remarks}

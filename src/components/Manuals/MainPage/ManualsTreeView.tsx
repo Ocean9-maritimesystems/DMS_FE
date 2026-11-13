@@ -457,55 +457,38 @@ const ManualsTreeView = forwardRef<ManualsTreeViewHandle, ManualsTreeViewProps>(
         }
     };
 
-    if (loading) return <div>Loading Tree.....</div>
+    /** "1.10 - Name" shown as a light number column with the name beside it (long names wrap under the name). */
+    const treeLabel = (node: TreeNode) => {
+        const text = String(node.label ?? '');
+        const cut = text.indexOf(' - ');
+        if (cut <= 0) return <span className="tree-label__name">{text}</span>;
+        return (
+            <span className="tree-label" title={text}>
+                <span className="tree-label__no">{text.slice(0, cut)}</span>
+                <span className="tree-label__name">{text.slice(cut + 3)}</span>
+            </span>
+        );
+    };
+
+    if (loading) return <div className="tree-loading">Loading manuals…</div>
 
     return (
         <div className="tree-maincontainer">
             <div className="p-inputgroup">
-                <InputText
-                    placeholder="Search..."
-                    value={searchValue}
-                    onChange={onSearchChange}
-                    style={{ 
-                        height: '38px', 
-                        paddingLeft: '10px' 
-                    }}
-                />
-                <div style={{ display: 'flex', alignItems: 'center', marginRight: '10px' }}>
-                    <Button 
-                    label="" 
-                    icon="pi pi-plus" 
-                    className="treeButton compact-btn" 
-                    tooltip="Expand All" 
-                    onClick={expandAll}
-                    style={{
-                        background: 'var(--primary-color)',
-                        border: '1px solid var(--primary-color)',
-                        color: 'white',
-                        width: '38px',
-                        height: '38px',
-                        minWidth: '38px',
-                        padding: '0',
-                        fontSize: '0.75rem'
-                    }}
-                />&nbsp;&nbsp;
-                <Button 
-                    label="" 
-                    icon="pi pi-minus" 
-                    className="treeButton compact-btn" 
-                    tooltip="Collapse All" 
-                    onClick={collapseAll}
-                    style={{
-                        background: 'var(--primary-color)',
-                        border: '1px solid var(--primary-color)',
-                        color: 'white',
-                        width: '38px',
-                        height: '38px',
-                        minWidth: '38px',
-                        padding: '0',
-                        fontSize: '0.75rem'
-                    }}
-                />&nbsp;&nbsp;
+                <span className="tree-search">
+                    <i className="pi pi-search" aria-hidden="true" />
+                    <InputText
+                        placeholder="Search manuals…"
+                        aria-label="Search manuals"
+                        value={searchValue}
+                        onChange={onSearchChange}
+                    />
+                </span>
+                <div className="tree-tools">
+                    <Button icon="pi pi-angle-double-down" className="tree-tool-btn" text tooltip="Expand all" tooltipOptions={{ position: 'bottom' }}
+                        aria-label="Expand all" onClick={expandAll} />
+                    <Button icon="pi pi-angle-double-up" className="tree-tool-btn" text tooltip="Collapse all" tooltipOptions={{ position: 'bottom' }}
+                        aria-label="Collapse all" onClick={collapseAll} />
                 </div>
             </div>
             <div className="tree-view-container" style={{ padding: 0, margin: 0 }}>
@@ -544,6 +527,7 @@ const ManualsTreeView = forwardRef<ManualsTreeViewHandle, ManualsTreeViewProps>(
                     onContextMenu={onContextMenu}
                     emptyMessage={calledMode ? 'No manuals match this filter.' : 'No manuals found.'}
                     className="custom-tree"
+                    nodeTemplate={treeLabel}
                     style={{ 
                     border: 'none', 
                     padding: 0, 
@@ -557,7 +541,7 @@ const ManualsTreeView = forwardRef<ManualsTreeViewHandle, ManualsTreeViewProps>(
                 header={headerText}
                 className="manual-edit-dialog"
                 visible={visibleAddEditDialog}
-                style={{ width: '60%', height: '220vh' }}
+                style={{ width: 'min(1200px, 96vw)', height: '92vh' }}
                 contentStyle={{ padding: '0.1rem', backgroundColor: '#e5eefbff' }}
                 headerStyle={{ backgroundColor: '#d2e3f9ff', borderBottom: '3px solid blue'  , height: '50px'}}
                 onHide={() => { if (!visibleAddEditDialog) return; setVisibleAddEditDialog(false); }}>
@@ -573,7 +557,7 @@ const ManualsTreeView = forwardRef<ManualsTreeViewHandle, ManualsTreeViewProps>(
             <Dialog header={headerText}
                 className="manual-rights-dialog"
                 visible={visibleVesselDetailsDialog}
-                style={{ width: '65%', maxHeight: '90vh', minWidth: '90vh' }}
+                style={{ width: '1320px', maxWidth: '96vw', maxHeight: '92vh' }}
                 contentStyle={{ height: '100%', padding: '0.5rem', backgroundColor: '#e5eefbff' }}
                 onHide={() => { if (!visibleVesselDetailsDialog) return; setVisibleVesselDetailsDialog(false); }}>
                 <VesselDetails
@@ -588,7 +572,7 @@ const ManualsTreeView = forwardRef<ManualsTreeViewHandle, ManualsTreeViewProps>(
             <Dialog header={headerText}
                 className="manual-dialog"
                 visible={visibleManualDetailsDialog}
-                style={{ width: '1250px', minWidth: '90vh', height: '100vh', maxHeight: '95vh' }}
+                style={{ width: '1100px', maxWidth: '96vw', maxHeight: '92vh' }}
                 contentStyle={{ padding: '0.5rem', backgroundColor: '#e5eefbff' }}
                 headerStyle={{ backgroundColor: '#d2e3f9ff', borderBottom: '3px solid blue' }}
                 onHide={() => { if (!visibleManualDetailsDialog) return; setVisibleManualDetailsDialog(false); }}>

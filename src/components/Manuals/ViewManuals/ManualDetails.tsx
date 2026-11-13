@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import JoditEditor from 'jodit-react';
 import { sanitizeHtml } from '../../utils/sanitize';
 import dmsLifecycleService from '../../../services/DMSLifecycleService';
 import './ManualDetails.scss';
-import { useTheme } from '../../../contexts/ThemeContext';
 
 export interface ManualDetailsProps {
     dmManualVersionID: number;
@@ -37,7 +35,6 @@ export type ManualDetailsProp = {
 const ManualDetails: React.FC<ManualDetailsProps> = ({ dmManualVersionID }) => {
    const [manualData, setManualData] = useState<ManualDetailsProp>();
    const [loading, setLoading] = useState(true);
-   const { theme } = useTheme(); 
     
     useEffect(() => {
         dmsLifecycleService.getApiCall<ManualDetailsProp | null>(`Manuals/GetManualDetailsByVersionId/${dmManualVersionID}`)
@@ -57,125 +54,90 @@ const ManualDetails: React.FC<ManualDetailsProps> = ({ dmManualVersionID }) => {
         return dateStr.split('T')[0]; // Returns only the date part
     };
 
-    if (loading) return <div>Loading manual detailss.....</div>
+    if (loading) return <div className="md-loading">Loading manual details…</div>;
+    if (!manualData) return <div className="md-loading">The details of this manual could not be loaded.</div>;
+
+    const d = manualData;
+    const show = (v: string | undefined | null) => (v && String(v).trim() ? v : '–');
+    /** What happened to this version, in order; steps that have not happened yet are shown as "Not yet". */
+    const history = [
+        { label: 'Created', by: d.createdBy, on: d.createdDate, icon: 'pi pi-plus' },
+        { label: 'Published for approval', by: d.publishedBy, on: d.publishedDate, icon: 'pi pi-send' },
+        { label: 'Released', by: d.releasedBy, on: d.releasedDate, icon: 'pi pi-check' },
+        { label: 'Last changed', by: d.lastModifiedBy, on: d.lastModifiedDate, icon: 'pi pi-pencil' },
+    ];
 
     return (
-         <div className="manual-details-container">
+        <div className="manual-details-container md">
             <div className="manual-details-header">
                 <div className="manual-title-block">
-                    <h3>{manualData?.manualName || 'Manual Details'}</h3>
+                    <h3>
+                        {d.manualNo && <span className="md-no">{d.manualNo}</span>}
+                        {d.manualName || 'Manual details'}
+                    </h3>
+                    <div className="md-sub">
+                        <span>{show(d.categoryName)}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>Version {show(d.version)}</span>
+                        {d.manualCode && <><span aria-hidden="true">·</span><span>Code {d.manualCode}</span></>}
+                    </div>
                 </div>
-                <span className={`manual-status status-${manualData?.statusString?.toLowerCase()}`}>
-                    {manualData?.statusString || 'Unknown'}
+                <span className={`manual-status status-${d.statusString?.toLowerCase()}`}>
+                    {d.statusString || 'Unknown'}
                 </span>
             </div>
-            <section className="manual-details-section metadata-section">
-                <div className="section-heading">
-                    <span className="section-title">Document information</span>
-                </div>
-                <div className="manual-details-grid identity-grid">
-                <div className="manual-details-item">
-                    <span className="label">Category</span>
-                    <span className="value">{manualData?.categoryName}</span>
-                </div>
-                <div className="manual-details-item">
-                    <span className="label">Manual Code</span>
-                    <span className="value">{manualData?.manualCode}</span>
-                </div>
-                <div className="manual-details-item">
-                    <span className="label">Manual No</span>
-                    <span className="value">{manualData?.manualNo}</span>
-                </div>
-                <div className="manual-details-item">
-                    <span className="label">Status</span>
-                    <span className="value">{manualData?.statusString}</span>
-                </div>
-                <div className="manual-details-item">
-                    <span className="label">Version</span>
-                    <span className="value">{manualData?.version}</span>
-                </div>
-                </div>
-            </section>
-            <section className="manual-details-section metadata-section">
-                <div className="section-heading">
-                    <span className="section-title">Publication &amp; Revision History</span>
-                </div>
-                <div className="manual-details-grid">
-                <div className="manual-details-item">
-                    <span className="label">Can Export</span>
-                    <span className="value">{manualData?.canExport ? 'Yes' : 'No'}</span>
-                </div>
-                <div className="manual-details-item">
-                    <span className="label">Approval Required</span>
-                    <span className="value">{manualData?.isApprovalRequired ? 'Yes' : 'No'}</span>
-                </div>
-                <div className="manual-details-item">
-                    <span className="label">Created By</span>
-                    <span className="value">{manualData?.createdBy}</span>
-                </div>
-                <div className="manual-details-item">
-                    <span className="label">Created Date</span>
-                    <span className="value">{formatDate(manualData?.createdDate)}</span>
-                </div>
-                <div className="manual-details-item">
-                    <span className="label">Published By</span>
-                    <span className="value">{manualData?.publishedBy}</span>
-                </div>
-                <div className="manual-details-item">
-                    <span className="label">Published Date</span>
-                    <span className="value">{formatDate(manualData?.publishedDate)}</span>
-                </div>
-                <div className="manual-details-item">
-                    <span className="label">Released By</span>
-                    <span className="value">{manualData?.releasedBy}</span>
-                </div>
-                <div className="manual-details-item">
-                    <span className="label">Released Date</span>
-                    <span className="value">{formatDate(manualData?.releasedDate)}</span>
-                </div>
-                <div className="manual-details-item">
-                    <span className="label">Last Modified By</span>
-                    <span className="value">{manualData?.lastModifiedBy}</span>
-                </div>
-                <div className="manual-details-item">
-                    <span className="label">Last Modified Date</span>
-                    <span className="value">{formatDate(manualData?.lastModifiedDate)}</span>
-                </div>
-                </div>
-            </section>
-            <div className="manual-details-section comment-section">
+
+            <div className="md-columns">
+                <section className="manual-details-section metadata-section">
+                    <div className="section-heading">
+                        <span className="section-title">Document</span>
+                    </div>
+                    <dl className="md-list">
+                        <div><dt>Category</dt><dd>{show(d.categoryName)}</dd></div>
+                        <div><dt>Manual no.</dt><dd>{show(d.manualNo)}</dd></div>
+                        <div><dt>Manual code</dt><dd>{show(d.manualCode)}</dd></div>
+                        <div><dt>Version</dt><dd>{show(d.version)}</dd></div>
+                        <div><dt>Can be exported</dt><dd>{d.canExport ? 'Yes' : 'No'}</dd></div>
+                        <div><dt>Needs approval</dt><dd>{d.isApprovalRequired ? 'Yes' : 'No'}</dd></div>
+                    </dl>
+                </section>
+
+                <section className="manual-details-section metadata-section">
+                    <div className="section-heading">
+                        <span className="section-title">History of this version</span>
+                    </div>
+                    <ol className="md-history">
+                        {history.map((h) => {
+                            const done = !!(h.on || (h.by && h.by.trim()));
+                            return (
+                                <li key={h.label} className={done ? 'is-done' : ''}>
+                                    <span className="md-history__dot" aria-hidden="true"><i className={h.icon} /></span>
+                                    <span className="md-history__what">{h.label}</span>
+                                    <span className="md-history__when">
+                                        {done ? <>{formatDate(h.on) || 'Date not recorded'}{h.by ? <> · {h.by}</> : null}</> : 'Not yet'}
+                                    </span>
+                                </li>
+                            );
+                        })}
+                    </ol>
+                </section>
+            </div>
+
+            <section className="manual-details-section comment-section">
                 <div className="section-heading">
                     <span className="section-title">Comment</span>
                 </div>
-                <div className="manual-details-comments">
-                    {manualData?.comments || 'No comment provided.'}
+                <div className={`manual-details-comments${d.comments ? '' : ' is-empty'}`}>
+                    {d.comments || 'No comment for this version.'}
                 </div>
-            </div>
+            </section>
+
             <section className="manual-details-section content-section">
                 <div className="section-heading">
                     <span className="section-title">Content</span>
                 </div>
-                <div className="manual-details-contents">
-                      <JoditEditor
-                        value={sanitizeHtml(manualData?.textContents)}
-                        config={{
-                            readonly: true,
-                            toolbar: false,
-                            height: '100%',
-                            showXPathInStatusbar: false,
-                            showCharsCounter: false,
-                            showWordsCounter: false,
-                            theme: theme === 'dark' ? 'dark' : 'default',
-                            style: {
-                                backgroundColor: 'var(--bg-secondary)',
-                                color: 'var(--text-primary)',
-                                fontFamily: '"Segoe UI", Arial, sans-serif',
-                                fontSize: '14px',
-                                lineHeight: '1.6'
-                            }
-                        }}
-                    />
-                </div>
+                {/* Shown as the page itself (sanitised), so the dialog has one scroll bar instead of two. */}
+                <div className="md-content" dangerouslySetInnerHTML={{ __html: sanitizeHtml(d.textContents) || '<p><em>No content.</em></p>' }} />
             </section>
         </div>
     );

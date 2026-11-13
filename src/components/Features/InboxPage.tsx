@@ -108,7 +108,7 @@ const InboxPage: React.FC = () => {
 
     return (
         <div className="feature-page inbox-page">
-            <PageHeader title="Inbox" subContent={unreadTotal ? `${unreadTotal} unread` : 'All read'} />
+            <PageHeader title="Inbox" />
             <main className="feature-main">
                 <div className="inbox-toolbar">
                     <div className="inbox-seg" role="group" aria-label="Show">

@@ -76,12 +76,15 @@ const ManualMainPage: React.FC<ManualDetailsProps> = ({ userId }) => {
         setUserActionCounts();
     }, [setUserActionCounts]);
 
-    /** Tree setting: show only the manuals behind the link (parents visible but disabled).
-     *  List setting: show the manuals behind the link as a list instead of the tree. */
-    const usersManualAction = (e: React.MouseEvent<HTMLAnchorElement>, mode: string) => {
-        e.preventDefault();
-        setSearchParams(mode === filterMode ? {} : { mode });
-    };
+    /** Quick filters above the tree (the same ?mode= values as the dashboard links). Tree setting: only the matching
+     *  manuals (parents visible but disabled); list setting: the matching manuals as a list instead of the tree. */
+    const filterChips = [
+        { mode: 'pendingapproval', label: 'To approve', icon: 'pi pi-check-circle', count: approvalCnt },
+        { mode: 'underreview', label: 'To review', icon: 'pi pi-eye', count: reviewCnt },
+        { mode: 'usertoack', label: 'To acknowledge', icon: 'pi pi-verified', count: ackCnt },
+        { mode: 'new', label: 'New', icon: 'pi pi-plus-circle', count: newCnt },
+        { mode: 'userfavorites', label: 'Favourites', icon: 'pi pi-star', count: favouriteCnt },
+    ];
 
     const clearFilter = () => setSearchParams({});
 
@@ -99,6 +102,21 @@ const ManualMainPage: React.FC<ManualDetailsProps> = ({ userId }) => {
             <PageHeader title="Manuals" />
             <div className="main-page-content">
                 <div className="tree-section">
+                    <div className="manual-filters" role="group" aria-label="Show only">
+                        {filterChips.map((c) => {
+                            const on = filterMode === c.mode;
+                            return (
+                                <button key={c.mode} type="button" className={`manual-filter${on ? ' is-on' : ''}${c.count === 0 ? ' is-empty' : ''}`}
+                                    aria-pressed={on} title={on ? 'Show all manuals again' : `Show only: ${MANUAL_FILTERS[c.mode].label}`}
+                                    onClick={() => setSearchParams(on ? {} : { mode: c.mode })}>
+                                    <i className={c.icon} aria-hidden="true" />
+                                    <span>{c.label}</span>
+                                    <span className="manual-filter__count">{c.count}</span>
+                                    {on && <i className="pi pi-times manual-filter__clear" aria-hidden="true" />}
+                                </button>
+                            );
+                        })}
+                    </div>
                     {filter && (
                         <div className="tree-filter-bar" role="status">
                             <span><i className="pi pi-filter" /> Showing: <strong>{filterLabel}</strong></span>
@@ -116,28 +134,6 @@ const ManualMainPage: React.FC<ManualDetailsProps> = ({ userId }) => {
                         ) : (
                             <ManualsTreeView ref={treeViewRef} userId={userId} calledMode={treeFilterMode} focusManualId={focusManualId} />
                         )}
-                    </div>
-                    <div className="menu-section">
-                        <a href="#" className={`menu-link${filterMode === 'pendingapproval' ? ' active' : ''}`} onClick={(e) => usersManualAction(e, "pendingapproval")}>
-                            <i className="pi pi-clock"></i>
-                            <span>Pending My Approval ({approvalCnt})</span>
-                        </a>
-                        <a href="#" className={`menu-link${filterMode === 'underreview' ? ' active' : ''}`} onClick={(e) => usersManualAction(e, "underreview")}>
-                            <i className="pi pi-eye"></i>
-                            <span>Pending My Review ({reviewCnt})</span>
-                        </a>
-                        <a href="#" className={`menu-link${filterMode === 'usertoack' ? ' active' : ''}`} onClick={(e) => usersManualAction(e, "usertoack")}>
-                            <i className="pi pi-thumbs-up"></i>
-                            <span>Pending My Acknowledgement ({ackCnt})</span>
-                        </a>
-                        <a href="#" className={`menu-link${filterMode === 'new' ? ' active' : ''}`} onClick={(e) => usersManualAction(e, "new")}>
-                            <i className="pi pi-plus-circle"></i>
-                            <span>New Documents ({newCnt})</span>
-                        </a>
-                        <a href="#" className={`menu-link${filterMode === 'userfavorites' ? ' active' : ''}`} onClick={(e) => usersManualAction(e, "userfavorites")}>
-                            <i className="pi pi-star-fill"></i>
-                            <span>My Favourites ({favouriteCnt})</span>
-                        </a>
                     </div>
                 </div>
                 <div className={`content-section with-tree`}>
